@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="es"><head><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Libre de Deudas</title>
+<style>
+:root{--bg:#f6f7fb;--c:#fff;--t:#1d2433;--m:#6b7385;--p:#2f6fed;--ok:#1f9d63;--w:#e5484d;--b:#e3e6ee}
+@media(prefers-color-scheme:dark){:root{--bg:#12151c;--c:#1b202b;--t:#eef0f5;--m:#98a0b3;--b:#2b3140}}
+*{box-sizing:border-box}
+body{margin:0 auto;font-family:system-ui,sans-serif;background:var(--bg);color:var(--t);padding:14px 14px 90px;max-width:520px}
+h2{margin:6px 0 12px}
+.card{background:var(--c);border:1px solid var(--b);border-radius:14px;padding:14px;margin-bottom:12px}
+.hi{background:var(--p);color:#fff;border:0;font-size:17px;line-height:1.4}
+.m{color:var(--m);font-size:14px}.big{font-size:32px;font-weight:700;margin:4px 0}
+input,select{width:100%;padding:11px;margin:4px 0 10px;border:1px solid var(--b);border-radius:10px;background:var(--bg);color:var(--t);font-size:16px}
+label{font-size:14px;color:var(--m)}
+.b{display:block;width:100%;padding:13px;margin-top:8px;border:0;border-radius:12px;background:var(--p);color:#fff;font-size:16px;font-weight:600}
+.g{background:var(--bg);color:var(--t);border:1px solid var(--b)}
+.x{background:none;border:0;color:var(--w);font-size:14px;padding:0}
+.row{display:flex;justify-content:space-between;gap:8px;padding:8px 0;border-bottom:1px solid var(--b)}
+.row:last-child{border:0}.ok{color:var(--ok);font-weight:700}.w{color:var(--w)}
+.bar{height:10px;background:var(--b);border-radius:6px;overflow:hidden;margin:6px 0}
+.bar div{height:100%;background:var(--ok)}
+nav{position:fixed;bottom:0;left:0;right:0;display:flex;background:var(--c);border-top:1px solid var(--b)}
+nav button{flex:1;padding:14px 4px;border:0;background:none;color:var(--m);font-size:13px}
+nav button.on{color:var(--p);font-weight:700}
+</style></head><body>
+<div id="app"></div><nav id="nav"></nav>
+<script>
+const K='libreDeudas3';
+const def={setup:false,name:'',g:'f',cur:'$',job:'delivery',inc:'variable',sal:0,adv:false,freq:'mensual',method:'bola',fun:10,pct:5,fundBal:0,funBal:0,pend:0,fix:{trabajo:0,basicos:0,alquiler:0},debts:[],hist:[],used:{}};
+let S;try{S=Object.assign({},def,JSON.parse(localStorage.getItem(K)||'{}'))}catch(e){S=Object.assign({},def)}
+const save=()=>{try{localStorage.setItem(K,JSON.stringify(S))}catch(e){}};
+const FAC={semanal:.25,quincenal:.5,mensual:1};
+const JOB={delivery:'Moto (gasolina y mantenimiento)',empleado:'Transporte al trabajo',independiente:'Herramientas y materiales',otro:'Gastos del trabajo'};
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const fm=n=>esc(S.cur)+Math.round(n).toLocaleString('es');
+
+const F={
+abrir:[
+"Hola, {n}. Hoy es un buen día para dar un paso, por pequeño que sea. 💛",
+"No tienes que arreglarlo todo hoy. Solo seguir avanzando.",
+"Cada día que abres esta app es un día que eliges tu libertad, {n}.",
+"Estás más cerca de lo que crees. Sigue.",
+"Tu esfuerzo de cada día vale mucho. Vamos a cuidarlo.",
+"Quien se atreve a mirar sus deudas de frente ya ganó la mitad de la batalla.",
+"Un paso a la vez. Hoy toca uno más.",
+"Eres más fuerte que tus deudas, {n}. Y vas a demostrarlo.",
+"Qué bueno verte por aquí. Tu tranquilidad se construye con días como hoy.",
+"No estás {s} en esto. Aquí estoy para ayudarte a ordenar todo.",
+"Pequeñas decisiones, grandes cambios. Hoy tú decides.",
+"Respira. Tienes un plan, y el plan funciona si lo sigues."],
+ingreso:[
+"¡Entró dinero, {n}! Vamos a darle un destino a cada peso. 💪",
+"Eso es trabajo duro convertido en libertad. Repartámoslo bien.",
+"Cada peso que entra es una herramienta. Usémosla con inteligencia.",
+"Qué orgullo ver tu esfuerzo. Ahora a repartirlo con cabeza.",
+"Buen trabajo. Ahora lo importante: que cada peso haga su parte.",
+"Lo ganaste tú. Ahora que trabaje para ti.",
+"Ingreso registrado. Vamos a ver cómo rinde.",
+"Tu esfuerzo merece un buen plan. Aquí lo tienes."],
+pago:[
+"¡Lo lograste, {n}! Cada pago te acerca a tu libertad. 🎉",
+"Pago hecho. Hoy le ganaste un pedazo a tus deudas.",
+"Eso es disciplina. Qué orgullo tu constancia.",
+"Un pago más. Así se construye la libertad, paso a paso.",
+"Cumpliste con tu responsabilidad y eso dice mucho de ti.",
+"Mira lo que hiciste hoy: tu deuda es más pequeña que ayer.",
+"Cada pago es un voto de confianza en tu futuro. Bien hecho.",
+"Sigue así, {n}. La constancia es tu mejor arma.",
+"Lo que parecía imposible se está volviendo realidad.",
+"Te mereces sentirte {o} de este avance."],
+atraso:[
+"Un mes difícil le pasa a cualquiera, {n}. Lo importante es que seguimos. 💛",
+"Atrasarse no te define. Retomar sí. Ajustemos el plan y vamos de nuevo.",
+"No pasa nada. Hoy es un buen día para volver a empezar.",
+"Esto es un tropiezo, no el final. Levántate, que tú puedes.",
+"No te castigues. Respira, ordena y da el siguiente paso.",
+"Todos tenemos semanas flojas. Lo que cuenta es volver.",
+"Aunque hoy no se pudo, mañana es otra oportunidad. Aquí sigo contigo.",
+"Lo importante es que no te rindes. Retomemos con calma.",
+"Un atraso se arregla. Lo que no se arregla es rendirse, y tú no te rindes.",
+"Sigue. Un pequeño pago hoy vale más que un gran pago nunca."],
+hito:[
+"🏆 ¡UNA DEUDA MENOS, {n}! Esto merece celebrarse.",
+"🎉 Deuda saldada. Mira todo lo que has avanzado.",
+"¡Libre de esa deuda! Una carga menos sobre tus hombros.",
+"Eso que parecía imposible ya está hecho. Orgullo total. 🙌",
+"¡Cerraste una deuda! Ahora ese dinero se libera para la siguiente.",
+"Lo hiciste. Respira hondo y disfrútalo, te lo ganaste.",
+"Una victoria más. Cada deuda saldada te acerca a la libertad total.",
+"¡Increíble constancia! Una deuda menos y muchas ganas de más."],
+imprevisto:[
+"Los imprevistos pasan, {n}. Para eso estamos preparados. 💪",
+"Esto no te tumba. Lo cubrimos y seguimos.",
+"Un imprevisto no borra tu progreso. Ajustamos y continuamos.",
+"Respira. Para momentos como este existe tu fondo.",
+"Lo importante es que lo registraste y no lo escondiste. Eso es madurez.",
+"Nadie se libra de las sorpresas. Tú ya tienes un plan para ellas.",
+"Esto es un bache, no el final del camino.",
+"Con calma, {n}. Lo vamos resolviendo paso a paso."],
+nueva:[
+"Gracias por registrarla, {n}. Ver todo claro es lo que nos permite ganarle.",
+"Una deuda nueva se ordena igual que las demás. Ya quedó en el plan.",
+"Mejor tenerla a la vista que escondida. Buen paso.",
+"Tu plan se ajustó. Seguimos avanzando.",
+"Registrarla toma valentía. Eso es lo que cambia las cosas.",
+"Todo queda ordenado otra vez. Tú sigue."],
+fondo:[
+"🎉 ¡Llegaste a la meta de tu fondo de emergencia, {n}! Ahora tienes un colchón para los imprevistos.",
+"Meta del fondo cumplida. Desde ahora ese porcentaje va directo a tus deudas. 🙌",
+"Mira lo que lograste: ya estás {c} ante una sorpresa. Sigue con tus deudas.",
+"¡Fondo completo! Dormir más tranquilo también es progreso.",
+"Lo lograste. Ahora todo el esfuerzo extra va a ganarle a las deudas."]};
+
+function fmtMsg(t){return t.replace(/\{n\}/g,esc(S.name||'amigo')).replace(/\{o\}/g,S.g=='m'?'orgulloso':'orgullosa').replace(/\{s\}/g,S.g=='m'?'solo':'sola').replace(/\{c\}/g,S.g=='m'?'cubierto':'cubierta')}
+function pick(c){const a=F[c];let u=S.used[c]||[];let o=a.map((_,i)=>i).filter(i=>!u.includes(i));
+if(!o.length){u=[];o=a.map((_,i)=>i)}
+const i=o[Math.floor(Math.random()*o.length)];u.push(i);S.used[c]=u;save();return fmtMsg(a[i])}let tab='inicio',msg=null,res=null,imp=null,dm=null;
+const goal=()=>(S.fix.basicos+S.fix.trabajo)/4;
+const need=()=>S.fix.trabajo+S.fix.basicos+S.fix.alquiler+S.debts.filter(d=>d.bal>0).reduce((s,d)=>s+d.min,0);
+function netHour(){const a=S.hist.filter(x=>x.h>0).slice(-4);if(a.length<3)return null;const h=a.reduce((s,x)=>s+x.h,0),n=a.reduce((s,x)=>s+x.inc-(x.g||0),0);return n/h}
+
+function tips(hole){const nh=S.adv?netHour():null;let ganar;
+if(S.job=='delivery')ganar='Trabajar en horas pico (almuerzo y cena), fines de semana o con más de una plataforma. Ojo: más horas solo sirven si cada hora te deja ganancia después de la gasolina.';
+else if(S.job=='independiente')ganar='Ofrecer tu servicio a más clientes y revisar si estás cobrando lo que vale tu tiempo.';
+else ganar='Horas extra si tu trabajo las permite, un trabajo extra de fin de semana o vender algo que ya no uses.';
+if(S.adv){ganar+=nh===null?' Aún no tengo datos suficientes para decirte si las horas extra te convienen: sigue registrando horas y gasto de trabajo.':(nh>0?' Tus últimas horas te dejaron en promedio '+fm(nh)+' netos por hora.':' Tus últimas horas casi no te dejaron ganancia neta, así que conviene recortar antes que trabajar más.')}
+return '<div class="card"><b>💡 Te faltan '+fm(hole)+'. Algunas ideas</b><br><br><p><b>1. Recortar:</b> revisa salidas, comida fuera de casa, suscripciones y compras por impulso. Bajar lo no esencial es lo más rápido.</p><p><b>2. Renegociar:</b> pídele a quien más interés te cobra una pausa, un plazo más largo o una cuota menor.</p><p><b>3. Ganar más:</b> '+ganar+'</p><p class="m">No hace falta hacerlo todo. Elige una y empieza.</p></div>'}
+
+function plan(inc){const f=FAC[S.freq];let r=inc;const L=[],paid={};
+const add=(n,nd,d,pend)=>{nd=Math.max(0,nd);const a=Math.min(nd,r);r-=a;L.push({n,need:nd,a,d,pend});if(d)paid[d.id]=(paid[d.id]||0)+a};
+if(S.pend>0)add('Imprevisto por compensar',S.pend,null,true);
+add(JOB[S.job],S.fix.trabajo*f);
+add('Comida y transporte',S.fix.basicos*f);
+add('Alquiler (apartado)',S.fix.alquiler*f);
+const ds=S.debts.filter(d=>d.bal>0);
+ds.filter(d=>d.es).forEach(d=>add(d.n+' (esencial)',Math.min(d.min*f,d.bal),d));
+ds.filter(d=>!d.es).forEach(d=>add(d.n+' (mínimo)',Math.min(d.min*f,d.bal),d));
+const short=L.reduce((s,x)=>s+x.need-x.a,0);
+const g=goal();let fund=Math.round(inc*S.pct/100);
+if(g>0)fund=Math.min(fund,Math.max(0,g-S.fundBal));
+fund=Math.max(0,Math.min(fund,r));r-=fund;
+if(fund>0)L.push({n:'Fondo de emergencia 🛟',need:fund,a:fund});
+let fun=0,ex=0;
+if(r>0){fun=Math.round(r*S.fun/100);ex=r-fun}
+const ord=[...ds].sort((a,b)=>S.method=='bola'?a.bal-b.bal:b.rate-a.rate);
+for(const d of ord){if(ex<=0)break;const p=Math.min(ex,d.bal-(paid[d.id]||0));
+if(p>0){L.push({n:'Extra para '+d.n+' 🎯',need:p,a:p,d});paid[d.id]=(paid[d.id]||0)+p;ex-=p}}
+fun+=ex;return{inc,L,fun,short,fund}}
+
+function go(t){tab=t;imp=null;dm=null;res=null;if(t=='inicio')msg=null;render()}
+function late(){msg=pick('atraso');render()}
+function calc(){const v=+document.getElementById('inc').value;if(!(v>0)){alert('Escribe cuánto ingresó.');return}
+res=plan(v);res.hint=pick('ingreso');
+if(S.adv){res.h=+document.getElementById('ih').value||0;res.g=+document.getElementById('ig').value||0}
+render()}
+function confirmPay(){let cleared=false,dp=0;
+res.L.forEach(x=>{if(x.d){const d=S.debts.find(q=>q.id==x.d.id);d.bal=Math.max(0,d.bal-x.a);dp+=x.a;if(d.bal==0)cleared=true}if(x.pend)S.pend=Math.max(0,S.pend-x.a)});
+const g=goal(),was=g>0&&S.fundBal>=g;
+S.fundBal+=res.fund;S.funBal+=res.fun;
+const hit=!was&&g>0&&S.fundBal>=g;
+S.hist.push({t:Date.now(),inc:res.inc,mp:dp/FAC[S.freq],h:res.h||0,g:res.g||0});
+save();msg=pick(cleared?'hito':hit?'fondo':'pago');res=null;tab='inicio';render()}
+function doImp(){const v=+document.getElementById('iv').value;if(!(v>0)){alert('Escribe cuánto fue el gasto.');return}
+let r=v;const a=Math.min(r,S.funBal);S.funBal-=a;r-=a;const b=Math.min(r,S.fundBal);S.fundBal-=b;r-=b;
+if(r>0)S.pend+=r;save();imp={v,a,b,r};msg=pick('imprevisto');tab='inicio';render()}
+function addDebt(){const n=document.getElementById('dn').value.trim(),bal=+document.getElementById('db').value;
+if(!n||!(bal>0)){alert('Escribe el nombre y cuánto debes.');return}
+S.debts.push({id:Date.now(),n,bal,min:+document.getElementById('dm').value||0,rate:+document.getElementById('dr').value||0,es:document.getElementById('de').checked});
+save();dm=pick('nueva');render()}
+function delDebt(id){if(confirm('¿Borrar esta deuda?')){S.debts=S.debts.filter(d=>d.id!=id);save();render()}}
+function saveForm(first){const v=id=>document.getElementById(id).value;
+const n=v('fn').trim();if(!n){alert('Escribe tu nombre.');return}
+S.name=n;S.g=v('fg');S.cur=v('fc').trim()||'$';S.job=v('fj');S.freq=v('ff');S.inc=v('fi');S.sal=Math.max(0,+v('fs')||0);
+if(!first){S.method=v('fm');S.fun=Math.min(30,Math.max(0,+v('fu')||0));S.adv=v('fd')=='1'}
+S.fix={trabajo:Math.max(0,+v('fk')||0),basicos:Math.max(0,+v('fb')||0),alquiler:Math.max(0,+v('fa')||0)};
+S.setup=true;save();msg=null;tab=first?'deudas':'inicio';render()}
+function resetAll(){if(confirm('Se borrarán TODOS tus datos de este teléfono. ¿Seguro?')){try{localStorage.removeItem(K)}catch(e){}S=JSON.parse(JSON.stringify(def));tab='inicio';msg=null;res=null;render()}}
+
+function vInicio(){const ds=S.debts.filter(d=>d.bal>0),tot=ds.reduce((s,d)=>s+d.bal,0),g=goal(),pc=g>0?Math.min(100,Math.round(S.fundBal/g*100)):0;
+if(!msg)msg=pick('abrir');
+let est='';const h=S.hist.slice(-3).filter(x=>x.mp>0);
+if(h.length&&tot>0){const mp=h.reduce((s,x)=>s+x.mp,0)/h.length;est='<p class="m">A este ritmo, tu libertad llegaría en unos <b>'+Math.ceil(tot/mp)+' meses</b>.</p>'}
+let im='';if(imp)im='<div class="card"><b>Imprevisto de '+fm(imp.v)+'</b><div class="m">'+(imp.a>0?'Del sobre de diversión: '+fm(imp.a)+'. ':'')+(imp.b>0?'Del fondo de emergencia: '+fm(imp.b)+'. ':'')+(imp.r>0?'Faltaron '+fm(imp.r)+', que se compensan en tu próximo ingreso.':'Quedó todo cubierto.')+'</div></div>';
+let dg='';if(S.inc=='fijo'&&S.sal>0&&need()>S.sal)dg=tips(need()-S.sal);
+return '<div class="card hi">'+msg+'</div>'+im+'<div class="card"><div class="m">Deuda total</div><div class="big">'+fm(tot)+'</div><div class="m">'+ds.length+' deuda(s) activa(s)</div>'+est+'</div>'+dg+'<div class="card"><div class="row"><span>Fondo de emergencia</span><b>'+fm(S.fundBal)+(g>0?' / '+fm(g):'')+'</b></div>'+(g>0?'<div class="bar"><div style="width:'+pc+'%"></div></div>':'')+'<div class="row"><span>Sobre de diversión</span><b>'+fm(S.funBal)+'</b></div>'+(S.pend>0?'<div class="row w"><span>Imprevisto por compensar</span><b>'+fm(S.pend)+'</b></div>':'')+'</div><div class="card"><button class="b" onclick="go(\'ingreso\')">💰 Registrar ingreso</button><button class="b g" onclick="go(\'imp\')">⚠️ Tuve un imprevisto</button><button class="b g" onclick="late()">Me atrasé con un pago</button></div>'}
+
+function vDeudas(){let l=S.debts.map(d=>'<div class="row"><div><b>'+esc(d.n)+'</b>'+(d.es?' ⭐':'')+'<div class="m">Debe '+fm(d.bal)+' · cuota mensual '+fm(d.min)+' · interés '+d.rate+'%</div></div><button class="x" onclick="delDebt('+d.id+')">Borrar</button></div>').join('');
+return '<h2>Mis deudas</h2>'+(dm?'<div class="card hi">'+dm+'</div>':'')+'<div class="card">'+(l||'<p class="m">Aún no has agregado deudas. Agrega todas, incluso las pequeñas.</p>')+'</div><div class="card"><b>Agregar deuda</b><br><br><label>Nombre (ej. Tarjeta, Moto, Prestamista)</label><input id="dn"><label>Cuánto debes en total</label><input id="db" type="number" inputmode="decimal"><label>Cuota mínima al mes</label><input id="dm" type="number" inputmode="decimal"><label>Interés mensual (%)</label><input id="dr" type="number" inputmode="decimal"><label><input id="de" type="checkbox" style="width:auto;margin-right:8px">Esencial (alquiler, moto de trabajo): se paga primero</label><button class="b" onclick="addDebt()">Agregar</button></div>'}
+
+function vIngreso(){const T={semanal:'esta semana',quincenal:'esta quincena',mensual:'este mes'}[S.freq];
+const pre=S.inc=='fijo'&&S.sal>0?Math.round(S.sal*FAC[S.freq]):'';
+let h='<h2>Registrar ingreso</h2><div class="card"><label>¿Cuánto ingresó '+T+'?</label><input id="inc" type="number" inputmode="decimal" value="'+pre+'">'+(S.adv?'<label>Horas trabajadas (opcional)</label><input id="ih" type="number" inputmode="decimal"><label>Gasto de trabajo, ej. gasolina (opcional)</label><input id="ig" type="number" inputmode="decimal">':'')+'<button class="b" onclick="calc()">Repartir</button></div>';
+if(res){h+='<div class="card hi">'+res.hint+'</div><div class="card"><b>Así se reparte '+fm(res.inc)+'</b>'+res.L.filter(x=>x.need>0).map(x=>'<div class="row"><span>'+esc(x.n)+'</span><span class="'+(x.a<x.need?'w':'ok')+'">'+fm(x.a)+'</span></div>').join('')+'<div class="row"><span>🎈 Sobre de diversión</span><span class="ok">'+fm(res.fun)+'</span></div></div>';
+if(res.short>0)h+='<div class="card w">Este ingreso no alcanzó para cubrir todo. No te castigues: el próximo ingreso lo compensamos.</div>'+tips(res.short);
+h+='<button class="b" onclick="confirmPay()">✅ Ya hice estos pagos</button>'}
+return h}
+
+function vImp(){return '<h2>Imprevisto</h2><div class="card"><p class="m">Cuéntame cuánto fue. Lo cubro primero con tu sobre de diversión, luego con el fondo de emergencia, y si falta algo lo compensamos en tu próximo ingreso.</p><label>¿De cuánto fue el gasto?</label><input id="iv" type="number" inputmode="decimal"><button class="b" onclick="doImp()">Registrar imprevisto</button></div>'}
+
+function vForm(first){const o=(v,t,c)=>'<option value="'+v+'"'+(c==v?' selected':'')+'>'+t+'</option>';
+return (first?'<h2>¡Bienvenido! Vamos a configurar tu app</h2><p class="m">Son solo unos datos. Todo se guarda únicamente en tu teléfono y nadie más lo ve.</p>':'<h2>Ajustes</h2>')+'<div class="card"><label>Tu nombre</label><input id="fn" value="'+esc(S.name)+'"><label>Eres</label><select id="fg">'+o('f','Mujer',S.g)+o('m','Hombre',S.g)+'</select><label>Símbolo de tu moneda (ej. $ o US$)</label><input id="fc" value="'+esc(S.cur)+'"><label>¿A qué te dedicas?</label><select id="fj">'+o('delivery','Delivery / reparto',S.job)+o('empleado','Empleado',S.job)+o('independiente','Independiente',S.job)+o('otro','Otro',S.job)+'</select><label>Tu ingreso es</label><select id="fi">'+o('variable','Variable (cambia cada vez)',S.inc)+o('fijo','Fijo (sueldo)',S.inc)+'</select><label>Si es fijo: ¿cuánto recibes al mes?</label><input id="fs" type="number" inputmode="decimal" value="'+(S.sal||'')+'"><label>¿Cada cuánto registras tus ingresos?</label><select id="ff">'+o('semanal','Cada semana',S.freq)+o('quincenal','Cada quincena',S.freq)+o('mensual','Cada mes',S.freq)+'</select>'+(first?'':'<label>Método para el dinero extra</label><select id="fm">'+o('bola','Bola de nieve (la deuda más pequeña primero)',S.method)+o('av','Avalancha (la de más interés primero)',S.method)+'</select><label>% del sobrante para diversión (máx. 30)</label><input id="fu" type="number" value="'+S.fun+'"><label>Modo avanzado (horas trabajadas y gasto de trabajo)</label><select id="fd">'+o('0','Apagado',S.adv?'1':'0')+o('1','Encendido',S.adv?'1':'0')+'</select>')+'</div><div class="card"><b>Tus gastos fijos al mes</b><br><br><label>Gastos de tu trabajo (gasolina, herramientas, transporte)</label><input id="fk" type="number" inputmode="decimal" value="'+S.fix.trabajo+'"><label>Comida y transporte</label><input id="fb" type="number" inputmode="decimal" value="'+S.fix.basicos+'"><label>Alquiler</label><input id="fa" type="number" inputmode="decimal" value="'+S.fix.alquiler+'"></div><button class="b" onclick="saveForm('+first+')">'+(first?'Empezar':'Guardar')+'</button>'+(first?'':'<button class="b g" onclick="resetAll()">Borrar todos mis datos</button>')}
+
+function render(){const nav=document.getElementById('nav');
+if(!S.setup){document.getElementById('app').innerHTML=vForm(true);nav.innerHTML='';return}
+document.getElementById('app').innerHTML={inicio:vInicio,deudas:vDeudas,ingreso:vIngreso,imp:vImp,ajustes:()=>vForm(false)}[tab]();
+nav.innerHTML=[['inicio','🏠 Inicio'],['deudas','📋 Deudas'],['ingreso','💰 Ingreso'],['ajustes','⚙️ Ajustes']].map(t=>'<button class="'+(tab==t[0]?'on':'')+'" onclick="go(\''+t[0]+'\')">'+t[1]+'</button>').join('');
+window.scrollTo(0,0)}
+render();
+</script></body></html>
