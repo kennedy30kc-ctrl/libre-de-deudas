@@ -66,7 +66,7 @@ nav button.on .ic{transform:translateY(-3px) scale(1.2)}
 <div id="app"></div><nav id="nav"></nav>
 <script>
 const K='libreDeudas3';
-const def={setup:false,name:'',g:'f',cur:'$',job:'delivery',inc:'variable',sal:0,adv:false,freq:'mensual',method:'bola',fun:10,pct:5,fundBal:0,funBal:0,pend:0,gap:[],paidTot:0,rentDay:0,sav:{},late:[],paus:[],log:[],fix:{trabajo:0,basicos:0,alquiler:0},debts:[],hist:[],used:{}};
+const def={setup:false,name:'',g:'f',cur:'$',job:'delivery',inc:'variable',sal:0,adv:false,freq:'mensual',method:'bola',fun:10,pct:5,fundBal:0,funBal:0,pend:0,gap:[],paidTot:0,rentDay:0,sav:{},late:[],log:[],exp:[],mig:0,fix:{trabajo:0,basicos:0,alquiler:0},debts:[],hist:[],used:{}};
 let S;try{S=Object.assign(JSON.parse(JSON.stringify(def)),JSON.parse(localStorage.getItem(K)||'{}'))}catch(e){S=JSON.parse(JSON.stringify(def))}
 const save=()=>{try{localStorage.setItem(K,JSON.stringify(S))}catch(e){}};
 const FAC={semanal:.25,quincenal:.5,mensual:1};
@@ -74,6 +74,17 @@ const JOB={delivery:'Moto (gasolina y mantenimiento)',empleado:'Transporte al tr
 const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const fm=n=>esc(S.cur)+Math.round(n).toLocaleString('es');
 const fr=n=>S.cur+Math.round(n).toLocaleString('es');
+function mk(){return 'e'+Date.now().toString(36)+Math.floor(Math.random()*1e4).toString(36)}
+function icon(n){n=String(n).toLowerCase();const m=[[/alquil|arriend/,'🏠'],[/luz|electric/,'💡'],[/agua/,'🚿'],[/internet|wifi/,'📶'],[/celular|plan |móvil|movil|teléfono|telefono/,'📱'],[/merca|comida|aliment|servicios b/,'🍽️'],[/gasolina|moto|transporte|bus|carro|taxi/,'🛵'],[/herramient|material/,'🧰'],[/colegio|escuela|universidad|curso/,'🎓'],[/gas\b/,'🔥'],[/netflix|stream|spotify|música|musica|suscrip|disney|youtube/,'🎬'],[/gimnasio|gym/,'🏋️']];
+for(const x of m)if(x[0].test(n))return x[1];return '🧾'}
+function migrate(){if(S.mig)return;S.exp=S.exp||[];let rid=null;
+if(S.fix.trabajo>0)S.exp.push({id:mk(),n:JOB[S.job],amt:S.fix.trabajo,type:'ess',apt:false,day:0,paused:false,until:null});
+if(S.fix.basicos>0)S.exp.push({id:mk(),n:'Comida y servicios básicos',amt:S.fix.basicos,type:'ess',apt:false,day:0,paused:false,until:null});
+if(S.fix.alquiler>0){rid=mk();S.exp.push({id:rid,n:'Alquiler',amt:S.fix.alquiler,type:'ess',apt:true,day:S.rentDay||0,paused:false,until:null})}
+(S.paus||[]).forEach(p=>S.exp.push({id:mk(),n:p.n,amt:p.amt,type:'pau',apt:false,day:0,paused:!!p.paused,until:p.until||null}));
+if(rid){if(S.sav.rent){S.sav[rid]=S.sav.rent;delete S.sav.rent}S.gap.forEach(g=>{if(g.key==='rent')g.key=rid})}
+S.mig=1;save()}
+migrate();
 
 const F={
 abrir:[
@@ -167,14 +178,16 @@ pausa:[
 function fmtMsg(t){return t.replace(/\{n\}/g,esc(S.name||'amigo')).replace(/\{o\}/g,S.g=='m'?'orgulloso':'orgullosa').replace(/\{s\}/g,S.g=='m'?'solo':'sola').replace(/\{c\}/g,S.g=='m'?'cubierto':'cubierta')}
 function pick(c){const a=F[c];let u=S.used[c]||[];let o=a.map((_,i)=>i).filter(i=>!u.includes(i));
 if(!o.length){u=[];o=a.map((_,i)=>i)}
-const i=o[Math.floor(Math.random()*o.length)];u.push(i);S.used[c]=u;save();return fmtMsg(a[i])}let tab='inicio',msg=null,res=null,imp=null,dm=null,boom=false,sheet=null,openLog=null;
+const i=o[Math.floor(Math.random()*o.length)];u.push(i);S.used[c]=u;save();return fmtMsg(a[i])}let tab='inicio',sub='deudas',msg=null,res=null,imp=null,dm=null,boom=false,sheet=null,openLog=null;
 const RM=window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches;
 const COL=['#6c4cf1','#4c8df6','#17a673','#f5a524','#e0559e','#14b8c4','#ef6c4d','#8e44ec'];
 const ka=k=>typeof k=='string'?"'"+k+"'":k;
-const goal=()=>(S.fix.basicos+S.fix.trabajo)/4;
-const pausAct=()=>S.paus.filter(p=>!p.paused);
-const pausSum=()=>pausAct().reduce((s,p)=>s+p.amt,0);
-const need=()=>S.fix.trabajo+S.fix.basicos+S.fix.alquiler+pausSum()+S.debts.filter(d=>d.bal>0).reduce((s,d)=>s+d.min,0);
+const gv=id=>document.getElementById(id).value;
+const goal=()=>S.exp.filter(e=>e.type=='ess').reduce((s,e)=>s+e.amt,0)/4;
+const pausAct=()=>S.exp.filter(e=>e.type=='pau'&&!e.paused);
+const pausSum=()=>pausAct().reduce((s,e)=>s+e.amt,0);
+const need=()=>S.exp.filter(e=>!e.paused).reduce((s,e)=>s+e.amt,0)+S.debts.filter(d=>d.bal>0).reduce((s,d)=>s+d.min,0);
+const SUG=[['Alquiler','ess',1],['Luz','ess',1],['Agua','ess',1],['Internet','ess',1],['Celular','ess',1],['Gas','ess',1],['Colegio','ess',1],['Mercado y comida','ess',0],['Gasolina o transporte','ess',0],['Streaming (Netflix, etc.)','pau',1],['Gimnasio','pau',1]];
 function addLog(o){S.log.push(o);if(S.log.length>300)S.log.shift()}
 function applyDebt(d,amt){const a=Math.min(amt,d.bal);d.bal-=a;S.paidTot+=a;if(d.bal<=0.5){d.bal=0;return true}return false}
 function daysLeft(day){if(!day)return null;const t=new Date(),td=t.getDate(),dim=new Date(t.getFullYear(),t.getMonth()+1,0).getDate();return day>=td?day-td:dim-td+day}
@@ -186,22 +199,21 @@ else if(S.job=='independiente')ganar='Ofrecer tu servicio a más clientes y revi
 else ganar='Horas extra si tu trabajo las permite, un trabajo extra de fin de semana o vender algo que ya no uses.';
 if(S.adv){ganar+=nh===null?' Aún no tengo datos suficientes para decirte si las horas extra te convienen: sigue registrando horas y gasto de trabajo.':(nh>0?' Tus últimas horas te dejaron en promedio '+fm(nh)+' netos por hora.':' Tus últimas horas casi no te dejaron ganancia neta, así que conviene recortar antes que trabajar más.')}
 const pa=pausAct();
-const pz=pa.length?'<p><b>⏸️ Pausar por ahora:</b> '+pa.map(p=>esc(p.n)+' ('+fm(p.amt)+')').join(', ')+'. Pausarlos liberaría '+fm(pausSum())+' al mes.</p><div class="ar">'+pa.map(p=>'<button class="mini p" onclick="pauseIt('+p.id+',1)">Pausar '+esc(p.n)+' 1 mes</button>').join('')+'</div><p class="m">Si prefieres 2 meses, cámbialo en la pestaña Deudas.</p>':'';
+const pz=pa.length?'<p><b>⏸️ Pausar por ahora:</b> '+pa.map(p=>esc(p.n)+' ('+fm(p.amt)+')').join(', ')+'. Pausarlos liberaría '+fm(pausSum())+' al mes.</p><div class="ar">'+pa.map(p=>'<button class="mini p" onclick="pauseIt('+ka(p.id)+',1)">Pausar '+esc(p.n)+' 1 mes</button>').join('')+'</div><p class="m">Si prefieres 2 meses, cámbialo en Deudas, en Gastos fijos.</p>':'';
 return '<div class="card warm"><b>💡 Te faltan '+fm(hole)+'. Algunas ideas</b><br><br>'+pz+'<p><b>1. Recortar:</b> revisa salidas, comida fuera de casa y compras por impulso. Bajar lo no esencial es lo más rápido.</p><p><b>2. Renegociar:</b> pídele a quien más interés te cobra una pausa, un plazo más largo o una cuota menor.</p><p><b>3. Ganar más:</b> '+ganar+'</p><p class="m">No hace falta hacerlo todo. Elige una y empieza.</p></div>'}
 
 function plan(inc,ex0){const f=FAC[S.freq];let r=inc;const L=[],paid={};
 const add=(n,nd,o)=>{o=o||{};nd=Math.max(0,nd);const a=Math.min(nd,r);r-=a;L.push(Object.assign({n,need:nd,a},o));
 if(o.d)paid[o.d.id]=(paid[o.d.id]||0)+a;
-if(o.sv&&o.key!==undefined&&o.key!=='rent')paid[o.key]=(paid[o.key]||0)+a};
+if(o.sv&&o.key!==undefined)paid[o.key]=(paid[o.key]||0)+a};
 if(ex0)S.gap.forEach((g,i)=>add('🧩 Completar: '+g.n,g.amt,{gk:i,key:g.key,sv:g.key!==undefined&&g.key!==null}));
 if(S.pend>0)add('⚠️ Imprevisto por compensar',S.pend,{pend:true});
 S.late.forEach((l,i)=>{const d=l.debtId?S.debts.find(q=>q.id==l.debtId&&q.bal>0):null;add('⏰ Atrasado: '+l.n,l.amt,{lk:i,d:d||undefined})});
 const ds=S.debts.filter(d=>d.bal>0);
 if(!ex0){
-add('🛵 '+JOB[S.job],S.fix.trabajo*f);
-add('🍽️ Comida y servicios básicos',S.fix.basicos*f);
-if(pausSum()>0)add('⏸️ Suscripciones y gastos pausables',pausSum()*f);
-add('🏠 Alquiler (apartado)',S.fix.alquiler*f,{sv:true,key:'rent'});
+const act=S.exp.filter(e=>!e.paused&&e.amt>0);
+const ordE=[...act.filter(e=>e.type=='ess'&&!e.apt),...act.filter(e=>e.type=='ess'&&e.apt),...act.filter(e=>e.type=='pau')];
+ordE.forEach(e=>add(icon(e.n)+' '+e.n,e.amt*f,e.apt?{sv:true,key:e.id}:{}));
 ds.filter(d=>d.es).forEach(d=>add('💳 '+d.n+' (esencial)',Math.min(d.min*f,d.bal),{sv:true,key:d.id}));
 ds.filter(d=>!d.es).forEach(d=>add('💳 '+d.n+' (mínimo)',Math.min(d.min*f,d.bal),{sv:true,key:d.id}))}
 const short=L.reduce((s,x)=>s+x.need-x.a,0);
@@ -217,17 +229,18 @@ if(p>0){L.push({n:'🎯 Extra para '+d.n,need:p,a:p,d});paid[d.id]=(paid[d.id]||
 fun+=ex;return{inc,L,fun,short:ex0?0:short,fund,extra:!!ex0}}
 
 function go(t){tab=t;imp=null;dm=null;res=null;openLog=null;sheet=null;if(t=='inicio')msg=null;render()}
-function calc(){const v=+document.getElementById('inc').value;if(!(v>0)){alert('Escribe cuánto ingresó.');return}
+function setSub(x){sub=x;render(true)}
+function calc(){const v=+gv('inc');if(!(v>0)){alert('Escribe cuánto ingresó.');return}
 res=plan(v,false);res.hint=pick('ingreso');
-if(S.adv){res.h=+document.getElementById('ih').value||0;res.g=+document.getElementById('ig').value||0}
+if(S.adv){res.h=+gv('ih')||0;res.g=+gv('ig')||0}
 render()}
-function calcExtra(){const v=+document.getElementById('ev').value;if(!(v>0)){alert('Escribe cuánto dinero extra te llegó.');return}
-res=plan(v,true);res.hint=pick('extra');res.why=document.getElementById('em').value.trim();
+function calcExtra(){const v=+gv('ev');if(!(v>0)){alert('Escribe cuánto dinero extra te llegó.');return}
+res=plan(v,true);res.hint=pick('extra');res.why=gv('em').trim();
 res.before=S.debts.reduce((s,d)=>s+d.bal,0);
 res.after=res.before-res.L.reduce((s,x)=>s+(x.d&&!x.sv?x.a:0),0);render()}
 function confirmPay(){let cleared=false,dp=0;const items=[];
 res.L.forEach(x=>{if(!(x.a>0))return;
-if(x.sv&&x.key!==undefined){S.sav[x.key]=(S.sav[x.key]||0)+x.a;if(x.key!=='rent')dp+=x.a}
+if(x.sv&&x.key!==undefined){S.sav[x.key]=(S.sav[x.key]||0)+x.a;if(S.debts.some(d=>d.id==x.key))dp+=x.a}
 else if(x.d){const d=S.debts.find(q=>q.id==x.d.id);if(d&&applyDebt(d,x.a))cleared=true;dp+=x.a}
 if(x.pend)S.pend=Math.max(0,S.pend-x.a);
 if(x.lk!==undefined)S.late[x.lk].amt-=x.a;
@@ -243,46 +256,47 @@ const hit=!was&&g>0&&S.fundBal>=g;
 S.hist.push({t:Date.now(),inc:res.inc,mp:res.extra?0:dp/FAC[S.freq],h:res.h||0,g:res.g||0,ex:!!res.extra});
 addLog({t:Date.now(),type:res.extra?'extra':'ingreso',amt:res.inc,why:res.why||'',lines:items});
 save();msg=pick(cleared?'hito':hit?'fondo':'pago');boom=true;res=null;tab='inicio';render()}
-function payApt(key){const amt=S.sav[key]||0;if(!(amt>0))return;let cleared=false,n='Alquiler';
-if(key!=='rent'){const d=S.debts.find(q=>q.id==key);if(d){n=d.n;cleared=applyDebt(d,amt)}}
+function payApt(key){const amt=S.sav[key]||0;if(!(amt>0))return;let cleared=false,n='Gasto';
+const e=S.exp.find(q=>q.id===key);
+if(e)n=e.n;else{const d=S.debts.find(q=>q.id==key);if(d){n=d.n;cleared=applyDebt(d,amt)}}
 S.sav[key]=0;addLog({t:Date.now(),type:'pago',amt,why:'',lines:[{n:'✅ Pagado: '+n,a:amt}]});
 save();msg=pick(cleared?'hito':'pago');boom=true;tab='inicio';render()}
 function payLate(i){const l=S.late[i];if(!l)return;let cleared=false;
 if(l.debtId){const d=S.debts.find(q=>q.id==l.debtId);if(d)cleared=applyDebt(d,l.amt)}
 addLog({t:Date.now(),type:'pago',amt:l.amt,why:'',lines:[{n:'✅ Pagado: '+l.n,a:l.amt}]});
 S.late.splice(i,1);save();msg=pick(cleared?'hito':'pago');boom=true;render()}
-function addLate(){const v=document.getElementById('lp').value,a=+document.getElementById('la').value;
+function addLate(){const v=gv('lp'),a=+gv('la');
 if(!(a>0)){alert('Escribe cuánto es.');return}
 let n,id=null;
-if(v=='rent')n='Alquiler';
-else if(v=='otro')n=document.getElementById('lo').value.trim()||'Otro pago';
+if(v.indexOf('x:')==0){const e=S.exp.find(q=>q.id===v.slice(2));n=e?e.n:'Gasto'}
+else if(v=='otro')n=gv('lo').trim()||'Otro pago';
 else{const d=S.debts.find(q=>q.id==v);n=d?d.n:'Pago';id=d?d.id:null}
 S.late.push({n,amt:a,debtId:id});addLog({t:Date.now(),type:'atraso',amt:a,why:n,lines:[]});
 save();msg=pick('atraso');tab='inicio';render()}
-function pauseIt(id,m){const p=S.paus.find(q=>q.id==id);if(!p)return;p.paused=true;p.until=Date.now()+m*30*864e5;save();msg=pick('pausa');res=null;tab='inicio';render()}
-function resumeIt(id){const p=S.paus.find(q=>q.id==id);if(!p)return;p.paused=false;p.until=null;save();render(true)}
-function addPaus(){const n=document.getElementById('pn').value.trim(),a=+document.getElementById('pa').value;
-if(!n||!(a>0)){alert('Escribe el nombre y cuánto cuesta al mes.');return}
-S.paus.push({id:Date.now(),n,amt:a,paused:false,until:null});save();render(true)}
-function delPaus(id){if(confirm('¿Borrar este gasto?')){S.paus=S.paus.filter(p=>p.id!=id);save();render(true)}}
-function doImp(){const v=+document.getElementById('iv').value;if(!(v>0)){alert('Escribe cuánto fue el gasto.');return}
+function pauseIt(id,m){const p=S.exp.find(q=>q.id===id);if(!p)return;p.paused=true;p.until=Date.now()+m*30*864e5;save();msg=pick('pausa');res=null;tab='inicio';render()}
+function resumeIt(id){const p=S.exp.find(q=>q.id===id);if(!p)return;p.paused=false;p.until=null;save();render(true)}
+function sugg(n,t,a){document.getElementById('xn').value=n;document.getElementById('xt').value=t;document.getElementById('xa').checked=!!a;document.getElementById('xm').focus()}
+function addExp(){const n=gv('xn').trim(),a=+gv('xm');if(!n||!(a>0)){alert('Escribe el nombre y cuánto cuesta al mes.');return}
+const day=Math.min(31,Math.max(0,+gv('xd')||0)),apt=document.getElementById('xa').checked||day>0;
+S.exp.push({id:mk(),n,amt:a,type:gv('xt'),apt,day,paused:false,until:null});save();render(true)}
+function delExp(id){if(confirm('¿Borrar este gasto?')){S.exp=S.exp.filter(e=>e.id!==id);delete S.sav[id];save();render(true)}}
+function editExp(id){const e=S.exp.find(q=>q.id===id);if(!e)return;const v=prompt('Nuevo monto al mes para '+e.n,e.amt);if(v===null)return;const a=+v;if(!(a>0)){alert('Escribe un monto válido.');return}e.amt=a;save();render(true)}
+function doImp(){const v=+gv('iv');if(!(v>0)){alert('Escribe cuánto fue el gasto.');return}
 let r=v;const a=Math.min(r,S.funBal);S.funBal-=a;r-=a;const b=Math.min(r,S.fundBal);S.fundBal-=b;r-=b;
 const ln=[];if(a>0)ln.push({n:'🎈 Del sobre de diversión',a});if(b>0)ln.push({n:'🛟 Del fondo de emergencia',a:b});if(r>0)ln.push({n:'⚠️ Por compensar en el próximo ingreso',a:r});
 if(r>0)S.pend+=r;addLog({t:Date.now(),type:'imprevisto',amt:v,why:'',lines:ln});
 save();imp={v,a,b,r};msg=pick('imprevisto');tab='inicio';render()}
-function addDebt(){const n=document.getElementById('dn').value.trim(),bal=+document.getElementById('db').value;
+function addDebt(){const n=gv('dn').trim(),bal=+gv('db');
 if(!n||!(bal>0)){alert('Escribe el nombre y cuánto debes.');return}
-S.debts.push({id:Date.now(),n,bal,ini:bal,min:+document.getElementById('dm').value||0,rate:+document.getElementById('dr').value||0,day:Math.min(31,Math.max(0,+document.getElementById('dd').value||0)),es:document.getElementById('de').checked});
+S.debts.push({id:Date.now(),n,bal,ini:bal,min:+gv('dm')||0,rate:+gv('dr')||0,day:Math.min(31,Math.max(0,+gv('dd')||0)),es:document.getElementById('de').checked});
 save();dm=pick('nueva');render()}
 function delDebt(id){if(confirm('¿Borrar esta deuda?')){S.debts=S.debts.filter(d=>d.id!=id);delete S.sav[id];save();render()}}
-function saveForm(first){const v=id=>document.getElementById(id).value;
-const n=v('fn').trim();if(!n){alert('Escribe tu nombre.');return}
-S.name=n;S.g=v('fg');S.cur=v('fc').trim()||'$';S.job=v('fj');S.freq=v('ff');S.inc=v('fi');S.sal=Math.max(0,+v('fs')||0);
-if(!first){S.method=v('fm');S.fun=Math.min(30,Math.max(0,+v('fu')||0));S.adv=v('fd')=='1'}
-S.fix={trabajo:Math.max(0,+v('fk')||0),basicos:Math.max(0,+v('fb')||0),alquiler:Math.max(0,+v('fa')||0)};
-S.rentDay=Math.min(31,Math.max(0,+v('fr')||0));
-S.setup=true;save();msg=null;tab=first?'deudas':'inicio';render()}
-function resetAll(){if(confirm('Se borrarán TODOS tus datos de este teléfono. ¿Seguro?')){try{localStorage.removeItem(K)}catch(e){}S=JSON.parse(JSON.stringify(def));tab='inicio';msg=null;res=null;render()}}
+function saveForm(first){
+const n=gv('fn').trim();if(!n){alert('Escribe tu nombre.');return}
+S.name=n;S.g=gv('fg');S.cur=gv('fc').trim()||'$';S.job=gv('fj');S.freq=gv('ff');S.inc=gv('fi');S.sal=Math.max(0,+gv('fs')||0);
+if(!first){S.method=gv('fm');S.fun=Math.min(30,Math.max(0,+gv('fu')||0));S.adv=gv('fd')=='1'}
+S.setup=true;save();msg=null;if(first){tab='deudas';sub='gastos'}else tab='inicio';render()}
+function resetAll(){if(confirm('Se borrarán TODOS tus datos de este teléfono. ¿Seguro?')){try{localStorage.removeItem(K)}catch(e){}S=JSON.parse(JSON.stringify(def));S.mig=1;tab='inicio';msg=null;res=null;render()}}
 function info(k){sheet=k;render(true)}
 function closeSheet(){sheet=null;render(true)}
 function toggleLog(t){openLog=openLog===t?null:t;render(true)}
@@ -292,7 +306,7 @@ if(r.fun>0)rows.push({n:'🎈 Sobre de diversión',a:r.fun,nd:r.fun});
 return '<div class="card"><b>'+title+'</b><div class="seg">'+rows.map((x,i)=>x.a>0?'<i style="flex:'+x.a+';background:'+COL[i%COL.length]+'"></i>':'').join('')+'</div>'+rows.map((x,i)=>'<div class="row"><span><i class="dot" style="background:'+COL[i%COL.length]+'"></i>'+esc(x.n)+'</span><span class="'+(x.a<x.nd?'w':'ok')+'">'+fm(x.a)+'</span></div>').join('')+'</div>'}
 
 function aptCard(){const it=[];
-if(S.fix.alquiler>0)it.push({key:'rent',n:'🏠 Alquiler',t:S.fix.alquiler,day:S.rentDay});
+S.exp.filter(e=>e.apt&&!e.paused&&e.amt>0).forEach(e=>it.push({key:e.id,n:icon(e.n)+' '+e.n,t:e.amt,day:e.day}));
 S.debts.filter(d=>d.bal>0&&d.min>0).forEach(d=>it.push({key:d.id,n:'💳 '+d.n,t:d.min,day:d.day}));
 if(!it.length)return '';
 return '<div class="card"><b>📌 Apartados del mes</b> <button class="x" style="color:var(--p)" onclick="info(\'apartados\')">ⓘ</button>'+it.map(a=>{const sv=S.sav[a.key]||0,pc=Math.min(100,Math.round(sv/a.t*100)),l=daysLeft(a.day);
@@ -305,21 +319,28 @@ const all=S.paidTot+tot,pct=all>0?Math.round(S.paidTot/all*100):0,off=Math.round
 let est='';const h=S.hist.slice(-3).filter(x=>x.mp>0);
 if(h.length&&tot>0){const mp=h.reduce((s,x)=>s+x.mp,0)/h.length;est='<div class="pill">⏳ A este ritmo: unos '+Math.ceil(tot/mp)+' meses para tu libertad</div>'}
 let hero;
-if(!S.debts.length)hero='<div class="card hero tap" onclick="info(\'deuda\')"><div style="font-size:46px">🌱</div><b style="font-size:19px">Empecemos por lo primero</b><p>Agrega tus deudas en la pestaña Deudas para ver tu camino a la libertad.</p></div>';
+if(!S.debts.length)hero='<div class="card hero tap" onclick="info(\'deuda\')"><div style="font-size:46px">🌱</div><b style="font-size:19px">Empecemos por lo primero</b><p>Agrega tus gastos fijos y tus deudas en la pestaña Deudas para ver tu camino a la libertad.</p></div>';
 else if(tot==0)hero='<div class="card hero tap" onclick="info(\'deuda\')"><div style="font-size:50px">🎉</div><b style="font-size:20px">¡Libre de deudas!</b><p>Lo lograste, '+esc(S.name)+'. Esto es tuyo.</p></div>';
 else hero='<div class="card hero tap" onclick="info(\'deuda\')"><div class="m2">Tu deuda total</div><div class="big" data-v="'+tot+'">'+fm(tot)+'</div><svg class="rg" viewBox="0 0 120 120"><circle cx="60" cy="60" r="52" fill="none" stroke="rgba(255,255,255,.25)" stroke-width="12"/><circle class="ring" cx="60" cy="60" r="52" fill="none" stroke="#fff" stroke-width="12" stroke-linecap="round" stroke-dasharray="327" style="--off:'+off+'" transform="rotate(-90 60 60)"/><text x="60" y="68" text-anchor="middle" fill="#fff" font-size="26" font-weight="700">'+pct+'%</text></svg><div class="m2">de tu deuda ya pagada</div>'+est+'<div class="m2" style="font-size:12px;margin-top:8px">Toca para saber más</div></div>';
 let im='';if(imp)im='<div class="card"><b>⚠️ Imprevisto de '+fm(imp.v)+'</b><div class="m">'+(imp.a>0?'Del sobre de diversión: '+fm(imp.a)+'. ':'')+(imp.b>0?'Del fondo de emergencia: '+fm(imp.b)+'. ':'')+(imp.r>0?'Faltaron '+fm(imp.r)+', que se compensan en tu próximo ingreso.':'Quedó todo cubierto.')+'</div></div>';
-const due=S.paus.filter(p=>p.paused&&p.until&&p.until<=Date.now());
-const dp2=due.length?'<div class="card warm"><b>⏯️ Ya pasó el tiempo de pausa</b><div class="m">¿Retomamos estos gastos?</div>'+due.map(p=>'<div class="row"><span>'+esc(p.n)+' · '+fm(p.amt)+'</span><button class="mini p" onclick="resumeIt('+p.id+')">Retomar</button></div>').join('')+'</div>':'';
+const due=S.exp.filter(p=>p.paused&&p.until&&p.until<=Date.now());
+const dp2=due.length?'<div class="card warm"><b>⏯️ Ya pasó el tiempo de pausa</b><div class="m">¿Retomamos estos gastos?</div>'+due.map(p=>'<div class="row"><span>'+esc(p.n)+' · '+fm(p.amt)+'</span><button class="mini p" onclick="resumeIt('+ka(p.id)+')">Retomar</button></div>').join('')+'</div>':'';
 const lt=S.late.length?'<div class="card warm"><b>⏰ Pagos atrasados</b><div class="m">Los cubro primero con tu próximo ingreso o dinero extra.</div>'+S.late.map((l,i)=>'<div class="row"><span>'+esc(l.n)+' · <b>'+fm(l.amt)+'</b></span><button class="mini p" onclick="payLate('+i+')">Ya lo pagué</button></div>').join('')+'</div>':'';
 let dg='';if(S.inc=='fijo'&&S.sal>0&&need()>S.sal)dg=tips(need()-S.sal);
-const tiles='<div class="gr2"><div class="st tap" onclick="info(\'fondo\')"><div class="m">🛟 Fondo de emergencia</div><div class="mid">'+fm(S.fundBal)+'</div>'+(g>0?'<div class="bar"><div style="width:'+pc+'%"></div></div><div class="m">Meta: '+fm(g)+'</div>':'<div class="m">Configura tus gastos en Ajustes</div>')+'</div><div class="st tap" onclick="info(\'diversion\')"><div class="m">🎈 Sobre de diversión</div><div class="mid">'+fm(S.funBal)+'</div><div class="m">Toca para saber más</div></div></div>'+(S.pend>0?'<div class="card warm"><b>⚠️ Imprevisto por compensar: '+fm(S.pend)+'</b><div class="m">Se cubre en tu próximo ingreso o dinero extra.</div></div>':'');
+const tiles='<div class="gr2"><div class="st tap" onclick="info(\'fondo\')"><div class="m">🛟 Fondo de emergencia</div><div class="mid">'+fm(S.fundBal)+'</div>'+(g>0?'<div class="bar"><div style="width:'+pc+'%"></div></div><div class="m">Meta: '+fm(g)+'</div>':'<div class="m">Agrega tus gastos fijos para calcular tu meta</div>')+'</div><div class="st tap" onclick="info(\'diversion\')"><div class="m">🎈 Sobre de diversión</div><div class="mid">'+fm(S.funBal)+'</div><div class="m">Toca para saber más</div></div></div>'+(S.pend>0?'<div class="card warm"><b>⚠️ Imprevisto por compensar: '+fm(S.pend)+'</b><div class="m">Se cubre en tu próximo ingreso o dinero extra.</div></div>':'');
 return '<div class="card hi">'+msg+'</div>'+hero+im+dp2+lt+dg+tiles+aptCard()+'<button class="b" onclick="go(\'ingreso\')">💰 Registrar ingreso</button><div class="gr2" style="margin-top:12px"><button class="b g" onclick="go(\'extra\')">🎁 Dinero extra</button><button class="b g" onclick="go(\'imp\')">⚠️ Imprevisto</button></div><div class="gr2"><button class="b g" onclick="go(\'atraso\')">⏰ Pago atrasado</button><button class="b g" onclick="go(\'hist\')">📜 Mi historial</button></div>'}
 
-function vDeudas(){let l=S.debts.map(d=>{const ini=d.ini||d.bal,pc=ini>0?Math.round((1-d.bal/ini)*100):0;
+function vDebtsPart(){let l=S.debts.map(d=>{const ini=d.ini||d.bal,pc=ini>0?Math.round((1-d.bal/ini)*100):0;
 return '<div class="row" style="align-items:flex-start"><div style="flex:1"><b>'+esc(d.n)+'</b>'+(d.es?' ⭐':'')+(d.bal==0?' ✅ Saldada':'')+'<div class="m">Debe '+fm(d.bal)+' · cuota '+fm(d.min)+' · interés '+d.rate+'%'+(d.day?' · día '+d.day:'')+'</div><div class="bar"><div style="width:'+Math.max(0,pc)+'%"></div></div></div><button class="x" onclick="delDebt('+d.id+')">Borrar</button></div>'}).join('');
-const pl=S.paus.map(p=>'<div class="row" style="align-items:flex-start"><div style="flex:1"><b>'+esc(p.n)+'</b> · '+fm(p.amt)+'/mes<div class="m">'+(p.paused?'⏸️ Pausado'+(p.until?' hasta el '+new Date(p.until).toLocaleDateString('es',{day:'numeric',month:'short'}):''):'▶️ Activo')+'</div><div class="ar">'+(p.paused?'<button class="mini p" onclick="resumeIt('+p.id+')">Retomar</button>':'<button class="mini" onclick="pauseIt('+p.id+',1)">Pausar 1 mes</button><button class="mini" onclick="pauseIt('+p.id+',2)">Pausar 2 meses</button>')+'</div></div><button class="x" onclick="delPaus('+p.id+')">Borrar</button></div>').join('');
-return '<h2>📋 Deudas y gastos</h2>'+(dm?'<div class="card hi">'+dm+'</div>':'')+'<div class="card">'+(l||'<p class="m">Aún no has agregado deudas. Agrega todas, incluso las pequeñas.</p>')+'</div><div class="card"><b>➕ Agregar deuda</b><br><br><label>Nombre (ej. Tarjeta, Moto, Prestamista)</label><input id="dn"><label>Cuánto debes en total</label><input id="db" type="number" inputmode="decimal"><label>Cuota mínima al mes</label><input id="dm" type="number" inputmode="decimal"><label>Interés mensual (%)</label><input id="dr" type="number" inputmode="decimal"><label>Día del mes en que la pagas (opcional)</label><input id="dd" type="number" inputmode="numeric"><label><input id="de" type="checkbox" style="width:auto;margin-right:8px">Esencial (alquiler, moto de trabajo): se paga primero</label><button class="b" onclick="addDebt()">Agregar</button></div><div class="card"><b>⏸️ Gastos que se pueden pausar</b> <button class="x" style="color:var(--p)" onclick="info(\'pausa\')">ⓘ</button><p class="m">Suscripciones, gimnasio, plan de celular caro. Si falta dinero, te sugiero pausarlos.</p>'+(pl||'<p class="m">Aún no has agregado ninguno.</p>')+'<label>Nombre (ej. Netflix, gimnasio)</label><input id="pn"><label>Cuánto cuesta al mes</label><input id="pa" type="number" inputmode="decimal"><button class="b g" onclick="addPaus()">Agregar</button></div>'}
+return (dm?'<div class="card hi">'+dm+'</div>':'')+'<div class="card">'+(l||'<p class="m">Aún no has agregado deudas. Agrega todas, incluso las pequeñas.</p>')+'</div><div class="card"><b>➕ Agregar deuda</b><br><br><label>Nombre (ej. Tarjeta, Moto, Prestamista)</label><input id="dn"><label>Cuánto debes en total</label><input id="db" type="number" inputmode="decimal"><label>Cuota mínima al mes</label><input id="dm" type="number" inputmode="decimal"><label>Interés mensual (%)</label><input id="dr" type="number" inputmode="decimal"><label>Día del mes en que la pagas (opcional)</label><input id="dd" type="number" inputmode="numeric"><label><input id="de" type="checkbox" style="width:auto;margin-right:8px">Esencial (moto de trabajo, por ejemplo): se paga primero</label><button class="b" onclick="addDebt()">Agregar</button></div>'}
+
+function vGastos(){const te=S.exp.filter(e=>e.type=='ess').reduce((s,e)=>s+e.amt,0),tp=pausSum();
+const row=e=>'<div class="row" style="align-items:flex-start"><div style="flex:1"><b>'+icon(e.n)+' '+esc(e.n)+'</b> · '+fm(e.amt)+'/mes<div class="m">'+(e.type=='pau'?(e.paused?'⏸️ Pausado'+(e.until?' hasta el '+new Date(e.until).toLocaleDateString('es',{day:'numeric',month:'short'}):''):'▶️ Se puede pausar'):'Esencial')+(e.apt?' · se aparta'+(e.day?' · día '+e.day:''):'')+'</div><div class="ar"><button class="mini" onclick="editExp('+ka(e.id)+')">Editar monto</button>'+(e.type=='pau'?(e.paused?'<button class="mini p" onclick="resumeIt('+ka(e.id)+')">Retomar</button>':'<button class="mini" onclick="pauseIt('+ka(e.id)+',1)">Pausar 1 mes</button><button class="mini" onclick="pauseIt('+ka(e.id)+',2)">Pausar 2 meses</button>'):'')+'</div></div><button class="x" onclick="delExp('+ka(e.id)+')">Borrar</button></div>';
+const sg=SUG.filter(s=>!S.exp.some(e=>e.n.toLowerCase()==s[0].toLowerCase()));
+return '<div class="card"><b>🧾 Mis gastos fijos</b> <button class="x" style="color:var(--p)" onclick="info(\'gastos\')">ⓘ</button><p class="m">Esenciales: '+fm(te)+' al mes'+(tp>0?' · Pausables activos: '+fm(tp):'')+'</p>'+(S.exp.length?S.exp.map(row).join(''):'<p class="m">Aún no has agregado gastos. Agrega todos los que tengas, aunque sean pequeños.</p>')+'</div><div class="card"><b>➕ Agregar gasto fijo</b>'+(sg.length?'<p class="m">Toca uno para empezar más rápido:</p><div class="ar" style="margin-bottom:12px">'+sg.map(s=>'<button class="mini" onclick="sugg(\''+s[0]+'\',\''+s[1]+'\','+s[2]+')">+ '+s[0]+'</button>').join('')+'</div>':'')+'<label>Nombre</label><input id="xn"><label>Cuánto cuesta al mes</label><input id="xm" type="number" inputmode="decimal"><label>Tipo</label><select id="xt"><option value="ess">Esencial (no se toca)</option><option value="pau">Se puede pausar si falta plata</option></select><label><input id="xa" type="checkbox" style="width:auto;margin-right:8px">Lo pago de una vez en una fecha (ir apartándolo)</label><label>Día del mes en que se paga (opcional)</label><input id="xd" type="number" inputmode="numeric"><button class="b" onclick="addExp()">Agregar</button></div>'}
+
+function vDeudas(){const sw='<div class="gr2"><button class="b'+(sub=='deudas'?'':' g')+'" onclick="setSub(\'deudas\')">💳 Deudas</button><button class="b'+(sub=='gastos'?'':' g')+'" onclick="setSub(\'gastos\')">🧾 Gastos fijos</button></div>';
+return '<h2>📋 Deudas y gastos</h2>'+sw+(sub=='gastos'?vGastos():vDebtsPart())}
 
 function vIngreso(){const T={semanal:'esta semana',quincenal:'esta quincena',mensual:'este mes'}[S.freq];
 const pre=S.inc=='fijo'&&S.sal>0?Math.round(S.sal*FAC[S.freq]):'';
@@ -338,7 +359,7 @@ return h}
 function vImp(){return '<h2>⚠️ Imprevisto</h2><div class="card"><p class="m">Cuéntame cuánto fue. Lo cubro primero con tu sobre de diversión, luego con el fondo de emergencia, y si falta algo lo compensamos en tu próximo ingreso.</p><label>¿De cuánto fue el gasto?</label><input id="iv" type="number" inputmode="decimal"><button class="b" onclick="doImp()">Registrar imprevisto</button></div>'}
 
 function vAtraso(){const o=[];
-if(S.fix.alquiler>0)o.push('<option value="rent">🏠 Alquiler</option>');
+S.exp.filter(e=>!e.paused).forEach(e=>o.push('<option value="x:'+e.id+'">'+icon(e.n)+' '+esc(e.n)+'</option>'));
 S.debts.filter(d=>d.bal>0).forEach(d=>o.push('<option value="'+d.id+'">💳 '+esc(d.n)+'</option>'));
 o.push('<option value="otro">Otro</option>');
 return '<h2>⏰ Pago atrasado</h2><div class="card"><p class="m">No pasa nada, aquí lo ordenamos. Dime cuál se atrasó y de cuánto, y en tu próximo ingreso o dinero extra lo cubro primero.</p><label>¿Cuál pago?</label><select id="lp">'+o.join('')+'</select><label>Si elegiste Otro, escribe cuál</label><input id="lo"><label>¿Cuánto debes de ese pago?</label><input id="la" type="number" inputmode="decimal"><button class="b" onclick="addLate()">Registrar atraso</button></div>'}
@@ -347,8 +368,8 @@ function vHist(){const L=[...S.log].reverse();
 if(!L.length)return '<h2>📜 Mi historial</h2><div class="card"><p class="m">Aún no hay movimientos. Cuando repartas un ingreso, aparecerá aquí.</p></div>';
 const IC={ingreso:'💰',extra:'🎁',imprevisto:'⚠️',atraso:'⏰',pago:'✅'},NM={ingreso:'Ingreso',extra:'Dinero extra',imprevisto:'Imprevisto',atraso:'Pago atrasado',pago:'Pago realizado'};
 let h='<h2>📜 Mi historial</h2>',cur='';
-L.forEach(e=>{const dt=new Date(e.t),mk=dt.toLocaleDateString('es',{month:'long',year:'numeric'});
-if(mk!==cur){cur=mk;h+='<div class="hd">'+mk+'</div>'}
+L.forEach(e=>{const dt=new Date(e.t),mk2=dt.toLocaleDateString('es',{month:'long',year:'numeric'});
+if(mk2!==cur){cur=mk2;h+='<div class="hd">'+mk2+'</div>'}
 const op=openLog===e.t,ln=e.lines||[];
 h+='<div class="card tap" onclick="toggleLog('+e.t+')"><div class="row" style="border:0;padding:0"><span>'+(IC[e.type]||'•')+' <b>'+(NM[e.type]||'')+'</b><div class="m">'+dt.toLocaleDateString('es',{day:'numeric',month:'short'})+(e.why?' · '+esc(e.why):'')+'</div></span><b>'+fm(e.amt)+'</b></div>'+(op&&ln.length?'<div style="margin-top:10px">'+ln.map(x=>'<div class="row"><span>'+esc(x.n)+'</span><b>'+fm(x.a)+'</b></div>').join('')+'</div>':'')+(!op&&ln.length?'<div class="m" style="margin-top:6px">Toca para ver el detalle</div>':'')+'</div>'});
 return h}
@@ -358,8 +379,8 @@ const g=goal(),pc=g>0?Math.min(100,Math.round(S.fundBal/g*100)):0;
 const tot=S.debts.reduce((s,d)=>s+Math.max(0,d.bal),0),all=S.paidTot+tot,dp=all>0?Math.round(S.paidTot/all*100):0;
 let em='💡',ti='',tx='',mo='';
 if(sheet=='fondo'){ti='🛟 Fondo de emergencia';
-tx='El salvavidas es plata apartada solo para imprevistos: una reparación de la moto, una urgencia, un gasto que nadie esperaba. Sale del '+S.pct+'% de cada ingreso, hasta llegar a una meta equivalente a una semana de tus gastos básicos. Así un susto no te devuelve al hoyo.';
-if(g<=0){em='🤔';mo='Configura tus gastos en Ajustes para que yo calcule tu meta.'}
+tx='El salvavidas es plata apartada solo para imprevistos: una reparación de la moto, una urgencia, un gasto que nadie esperaba. Sale del '+S.pct+'% de cada ingreso, hasta llegar a una meta equivalente a una semana de tus gastos esenciales. Así un susto no te devuelve al hoyo.';
+if(g<=0){em='🤔';mo='Agrega tus gastos fijos para que yo calcule tu meta.'}
 else if(pc==0){em='😢';mo='Todavía está vacío, pero con tu próximo ingreso empieza a llenarse. Confío en que va a llegar.'}
 else if(pc<50){em='🙂';mo='Ya empezó a llenarse. Vas por buen camino, sigue así.'}
 else if(pc<100){em='😄';mo='Más de la mitad. ¡Ya casi tienes tu salvavidas completo!'}
@@ -376,15 +397,18 @@ else if(dp==0){em='😟';mo='Aún no empieza a llenarse, pero ya diste el primer
 else if(dp<50){em='🙂';mo='Ya empezó a avanzar. Cada pago cuenta.'}
 else{em='😄';mo='Más de la mitad. ¡Ya casi!'}}
 else if(sheet=='apartados'){em='🐷';ti='📌 Apartados del mes';
-tx='Cada vez que repartes un ingreso, una parte del alquiler y de tus cuotas se aparta para juntarlas y pagar completo en su fecha. La app solo lleva la cuenta: aparta ese dinero de verdad, en un sobre o en otra cuenta, para no gastarlo por error.';
+tx='Cada vez que repartes un ingreso, una parte de tus gastos con fecha de pago y de tus cuotas se aparta para juntarlas y pagar completo a tiempo. La app solo lleva la cuenta: aparta ese dinero de verdad, en un sobre o en otra cuenta, para no gastarlo por error.';
 mo='Cuando lo pagues de verdad, toca "Ya lo pagué" y la barra vuelve a empezar.'}
+else if(sheet=='gastos'){em='🧾';ti='🧾 Gastos fijos';
+tx='Aquí van todos los gastos que se repiten cada mes. Los esenciales (alquiler, luz, comida) no se tocan. Los que se pueden pausar (suscripciones, gimnasio) los puedes frenar uno o dos meses si falta dinero. Si un gasto se paga de una vez en una fecha, se va apartando poco a poco.';
+mo='Entre más completa esté tu lista, más exacto será tu plan.'}
 else{em='⏸️';ti='⏸️ Gastos pausables';
 tx='Son suscripciones y gastos fijos que no son esenciales. Si el dinero no alcanza, se pausan uno o dos meses para cubrir lo importante, y la app te avisa cuándo retomarlos.';
 mo='Pausar no es perder: es cuidar lo importante primero.'}
 return '<div class="ov" onclick="closeSheet()"><div class="sh" onclick="event.stopPropagation()"><div class="mood">'+em+'</div><h2 style="margin:10px 0">'+ti+'</h2><p class="m" style="text-align:left">'+tx+'</p><div class="card hi" style="margin:12px 0;text-align:left">'+fmtMsg(mo)+'</div><button class="b" onclick="closeSheet()">Entendido</button></div></div>'}
 
 function vForm(first){const o=(v,t,c)=>'<option value="'+v+'"'+(c==v?' selected':'')+'>'+t+'</option>';
-return (first?'<h2>👋 ¡Bienvenido!</h2><p class="m">Vamos a configurar tu app. Son solo unos datos. Todo se guarda únicamente en tu teléfono y nadie más lo ve.</p>':'<h2>⚙️ Ajustes</h2>')+'<div class="card"><label>Tu nombre</label><input id="fn" value="'+esc(S.name)+'"><label>Eres</label><select id="fg">'+o('f','Mujer',S.g)+o('m','Hombre',S.g)+'</select><label>Símbolo de tu moneda (ej. $ o US$)</label><input id="fc" value="'+esc(S.cur)+'"><label>¿A qué te dedicas?</label><select id="fj">'+o('delivery','Delivery / reparto',S.job)+o('empleado','Empleado',S.job)+o('independiente','Independiente',S.job)+o('otro','Otro',S.job)+'</select><label>Tu ingreso es</label><select id="fi">'+o('variable','Variable (cambia cada vez)',S.inc)+o('fijo','Fijo (sueldo)',S.inc)+'</select><label>Si es fijo: ¿cuánto recibes al mes?</label><input id="fs" type="number" inputmode="decimal" value="'+(S.sal||'')+'"><label>¿Cada cuánto registras tus ingresos?</label><select id="ff">'+o('semanal','Cada semana',S.freq)+o('quincenal','Cada quincena',S.freq)+o('mensual','Cada mes',S.freq)+'</select>'+(first?'':'<label>Método para el dinero extra</label><select id="fm">'+o('bola','Bola de nieve (la deuda más pequeña primero)',S.method)+o('av','Avalancha (la de más interés primero)',S.method)+'</select><label>% del sobrante para diversión (máx. 30)</label><input id="fu" type="number" value="'+S.fun+'"><label>Modo avanzado (horas trabajadas y gasto de trabajo)</label><select id="fd">'+o('0','Apagado',S.adv?'1':'0')+o('1','Encendido',S.adv?'1':'0')+'</select>')+'</div><div class="card"><b>Tus gastos fijos al mes</b><br><br><label>Gastos de tu trabajo (gasolina, herramientas, transporte para ir a trabajar)</label><input id="fk" type="number" inputmode="decimal" value="'+S.fix.trabajo+'"><label>Comida y servicios básicos (mercado, luz, agua, internet)</label><input id="fb" type="number" inputmode="decimal" value="'+S.fix.basicos+'"><label>Alquiler</label><input id="fa" type="number" inputmode="decimal" value="'+S.fix.alquiler+'"><label>Día del mes en que pagas el alquiler (opcional)</label><input id="fr" type="number" inputmode="numeric" value="'+(S.rentDay||'')+'"></div><button class="b" onclick="saveForm('+first+')">'+(first?'Empezar':'Guardar')+'</button>'+(first?'':'<button class="b g" onclick="resetAll()">Borrar todos mis datos</button>')}
+return (first?'<h2>👋 ¡Bienvenido!</h2><p class="m">Vamos a configurar tu app. Son solo unos datos. Todo se guarda únicamente en tu teléfono y nadie más lo ve. Después te pediré tus gastos fijos y tus deudas.</p>':'<h2>⚙️ Ajustes</h2>')+'<div class="card"><label>Tu nombre</label><input id="fn" value="'+esc(S.name)+'"><label>Eres</label><select id="fg">'+o('f','Mujer',S.g)+o('m','Hombre',S.g)+'</select><label>Símbolo de tu moneda (ej. $ o US$)</label><input id="fc" value="'+esc(S.cur)+'"><label>¿A qué te dedicas?</label><select id="fj">'+o('delivery','Delivery / reparto',S.job)+o('empleado','Empleado',S.job)+o('independiente','Independiente',S.job)+o('otro','Otro',S.job)+'</select><label>Tu ingreso es</label><select id="fi">'+o('variable','Variable (cambia cada vez)',S.inc)+o('fijo','Fijo (sueldo)',S.inc)+'</select><label>Si es fijo: ¿cuánto recibes al mes?</label><input id="fs" type="number" inputmode="decimal" value="'+(S.sal||'')+'"><label>¿Cada cuánto registras tus ingresos?</label><select id="ff">'+o('semanal','Cada semana',S.freq)+o('quincenal','Cada quincena',S.freq)+o('mensual','Cada mes',S.freq)+'</select>'+(first?'':'<label>Método para el dinero extra</label><select id="fm">'+o('bola','Bola de nieve (la deuda más pequeña primero)',S.method)+o('av','Avalancha (la de más interés primero)',S.method)+'</select><label>% del sobrante para diversión (máx. 30)</label><input id="fu" type="number" value="'+S.fun+'"><label>Modo avanzado (horas trabajadas y gasto de trabajo)</label><select id="fd">'+o('0','Apagado',S.adv?'1':'0')+o('1','Encendido',S.adv?'1':'0')+'</select>')+'</div><button class="b" onclick="saveForm('+first+')">'+(first?'Empezar':'Guardar')+'</button>'+(first?'':'<button class="b g" onclick="resetAll()">Borrar todos mis datos</button>')}
 
 function confetti(){const c=['#6c4cf1','#4c8df6','#17a673','#f5a524','#e0559e'];
 for(let i=0;i<46;i++){const e=document.createElement('span');e.className='cf';e.style.left=Math.random()*100+'vw';e.style.background=c[i%5];e.style.animationDuration=(1.8+Math.random()*1.6)+'s';e.style.animationDelay=(Math.random()*.4)+'s';document.body.appendChild(e);setTimeout(()=>e.remove(),4300)}}
