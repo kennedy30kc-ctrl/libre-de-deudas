@@ -48,7 +48,7 @@ label{font-size:14px;color:var(--m)}
 @keyframes grow{from{transform:scaleX(0)}}
 .ov{position:fixed;inset:0;background:rgba(10,12,30,.55);z-index:50;display:flex;align-items:flex-end;justify-content:center;animation:fade .25s both}
 @keyframes fade{from{opacity:0}}
-.sh{background:var(--c);width:100%;max-width:520px;border-radius:24px 24px 0 0;padding:22px 20px 26px;text-align:center;animation:slide .3s both}
+.sh{background:var(--c);width:100%;max-width:520px;border-radius:24px 24px 0 0;padding:22px 20px 26px;text-align:center;animation:slide .3s both;max-height:92vh;overflow:auto}
 @keyframes slide{from{transform:translateY(60px);opacity:0}}
 .mood{font-size:66px;animation:pop .6s both}
 @keyframes pop{0%{transform:scale(.3)}70%{transform:scale(1.2)}100%{transform:scale(1)}}
@@ -156,6 +156,11 @@ imprevisto:[
 "Nadie se libra de las sorpresas. Tú ya tienes un plan para ellas.",
 "Esto es un bache, no el final del camino.",
 "Con calma, {n}. Lo vamos resolviendo paso a paso."],
+retiro:[
+"Para esto estaba el fondo, {n}. Usarlo no es un fracaso. 💛",
+"Qué bueno que lo tenías. Cuando puedas, lo volvemos a llenar.",
+"Bien hecho por haberlo apartado antes. Ahora te está ayudando.",
+"Respira. El fondo hizo justo lo que debía."],
 nueva:[
 "Gracias por registrarla, {n}. Ver todo claro es lo que nos permite ganarle.",
 "Una deuda nueva se ordena igual que las demás. Ya quedó en el plan.",
@@ -270,6 +275,16 @@ else if(kind=='fun'){S.funBal+=amt;nm='🎈 Al sobre de diversión'}
 else{const d=S.debts.find(q=>q.id==id);if(!d)return;amt=Math.min(amt,Math.round(d.bal));cl=applyDebt(d,amt);nm='🎯 Extra a '+d.n}
 S.avail-=amt;addLog({t:Date.now(),type:'pago',amt,why:'',lines:[{n:nm,a:amt}]});
 save();msg=pick(cl?'hito':hit?'fondo':'pago');boom=cl||hit;render(true)}
+function fundOut(){if(S.fundBal<=0.5){alert('Tu fondo está vacío.');return}
+const v=prompt('¿Cuánto quieres sacar del fondo? (tienes '+Math.round(S.fundBal)+')','');if(v===null)return;let a=+v;if(!(a>0)){alert('Escribe un monto válido.');return}
+a=Math.min(a,S.fundBal);const w=(prompt('¿Para qué lo necesitas? (opcional)','')||'').trim();
+S.fundBal-=a;S.avail+=a;addLog({t:Date.now(),type:'retiro',amt:a,why:w,lines:[{n:'🛟 Del fondo a tu dinero disponible',a}]});
+save();sheet=null;msg=pick('retiro');render(true)}
+function funOut(){if(S.funBal<=0.5){alert('Tu sobre está vacío.');return}
+const v=prompt('¿Cuánto gastaste de tu diversión? (tienes '+Math.round(S.funBal)+')','');if(v===null)return;let a=+v;if(!(a>0)){alert('Escribe un monto válido.');return}
+a=Math.min(a,S.funBal);const w=(prompt('¿En qué? (opcional)','')||'').trim();
+S.funBal-=a;addLog({t:Date.now(),type:'pago',amt:a,why:w,lines:[{n:'🎈 Diversión'+(w?': '+w:''),a}]});
+save();sheet=null;msg=pick('pago');render(true)}
 function addLate(){const v=gv('lp'),a=+gv('la');
 if(!(a>0)){alert('Escribe cuánto es.');return}
 let n,id=null,key;
@@ -290,10 +305,12 @@ function editDay(id){const o=S.exp.find(q=>q.id===id)||S.debts.find(q=>q.id==id)
 function togType(id){const d=S.debts.find(q=>q.id==id);if(!d)return;d.type=(d.type||'tar')=='conv'?'tar':'conv';save();render(true)}
 function togNeg(id){const d=S.debts.find(q=>q.id==id);if(!d)return;d.neg=!d.neg;save();render(true)}
 function doImp(){const v=+gv('iv');if(!(v>0)){alert('Escribe cuánto fue el gasto.');return}
-let r=v;const a=Math.min(r,S.funBal);S.funBal-=a;r-=a;const b=Math.min(r,S.fundBal);S.fundBal-=b;r-=b;
-const ln=[];if(a>0)ln.push({n:'🎈 Del sobre de diversión',a});if(b>0)ln.push({n:'🛟 Del fondo de emergencia',a:b});if(r>0){S.avail-=r;ln.push({n:'💵 De tu dinero disponible',a:r})}
-addLog({t:Date.now(),type:'imprevisto',amt:v,why:'',lines:ln});
-save();imp={v,a,b,r};msg=pick('imprevisto');tab='inicio';render()}
+const src=gv('isrc'),why=gv('iw').trim();let r=v;const ln=[];
+if(src=='fund'){const a=Math.min(r,Math.max(0,S.fundBal));if(a>0){S.fundBal-=a;r-=a;ln.push({n:'🛟 Del fondo de emergencia',a})}}
+else if(src=='fun'){const a=Math.min(r,Math.max(0,S.funBal));if(a>0){S.funBal-=a;r-=a;ln.push({n:'🎈 Del sobre de diversión',a})}}
+if(r>0){S.avail-=r;ln.push({n:'💵 De tu dinero disponible',a:r})}
+addLog({t:Date.now(),type:'imprevisto',amt:v,why,lines:ln});
+save();imp={v,ln,src};msg=pick(src=='fund'?'retiro':'imprevisto');tab='inicio';render()}
 function addDebt(){const n=gv('dn').trim(),bal=+gv('db');
 if(!n||!(bal>0)){alert('Escribe el nombre y cuánto debes.');return}
 S.debts.push({id:Date.now(),n,bal,ini:bal,min:+gv('dm')||0,rate:+gv('dr')||0,day:Math.min(31,Math.max(0,+gv('dd')||0)),type:gv('dt'),neg:document.getElementById('dg').checked});
@@ -356,7 +373,7 @@ const C=ctx();let line;
 if(!C.seq.length)line='No tienes pagos con fecha pendientes antes de '+(C.np?'tu próximo cobro':'fin de mes')+'.';
 else{const nx=C.seq[0];line='Lo siguiente: <b>'+esc(strip(nx.n))+'</b> ('+fm(nx.amt)+')'+(nx.due?' · día '+nx.due.getDate():'')+'. '+(C.fit.includes(nx)?'Te alcanza ✅':'No te alcanza todavía.')}
 const av='<div class="card hi tap" onclick="go(\'mes\')"><div class="m2">💵 Dinero disponible</div><div class="av">'+fm(S.avail)+'</div><div class="m2">'+line+'</div><div class="m2" style="margin-top:6px;font-size:12px">Toca para ver tu mes</div></div>';
-let im='';if(imp)im='<div class="card"><b>⚠️ Imprevisto de '+fm(imp.v)+'</b><div class="m">'+(imp.a>0?'Del sobre de diversión: '+fm(imp.a)+'. ':'')+(imp.b>0?'Del fondo de emergencia: '+fm(imp.b)+'. ':'')+(imp.r>0?'De tu dinero disponible: '+fm(imp.r)+'.':'Quedó todo cubierto con tus apartados.')+'</div></div>';
+let im='';if(imp)im='<div class="card"><b>⚠️ Imprevisto de '+fm(imp.v)+'</b>'+imp.ln.map(x=>'<div class="row"><span>'+esc(x.n)+'</span><b>'+fm(x.a)+'</b></div>').join('')+(imp.src=='fund'?'<div class="m">Cuando puedas, volvemos a llenar el fondo.</div>':'')+'</div>';
 const due=S.exp.filter(p=>p.paused&&p.until&&p.until<=Date.now());
 const dp2=due.length?'<div class="card warm"><b>⏯️ Ya pasó el tiempo de pausa</b><div class="m">¿Retomamos estos gastos?</div>'+due.map(p=>'<div class="row"><span>'+esc(p.n)+' · '+fm(p.amt)+'</span><button class="mini p" onclick="resumeIt('+ka(p.id)+')">Retomar</button></div>').join('')+'</div>':'';
 const lt=S.late.length?'<div class="card warm tap" onclick="go(\'mes\')"><b>⏰ Tienes '+S.late.length+' pago(s) atrasado(s)</b><div class="m">Toca para verlos en Mi mes.</div></div>':'';
@@ -395,7 +412,9 @@ return '<div class="card"><b>🧾 Mis gastos fijos</b> <button class="x" style="
 function vDeudas(){const sw='<div class="gr2"><button class="b'+(sub=='deudas'?'':' g')+'" onclick="setSub(\'deudas\')">💳 Deudas</button><button class="b'+(sub=='gastos'?'':' g')+'" onclick="setSub(\'gastos\')">🧾 Gastos fijos</button></div>';
 return '<h2>📋 Deudas y gastos</h2>'+sw+(sub=='gastos'?vGastos():vDebtsPart())}
 
-function vImp(){return '<h2>⚠️ Imprevisto</h2><div class="card"><p class="m">Cuéntame cuánto fue. Lo cubro primero con tu sobre de diversión, luego con el fondo de emergencia, y si falta algo sale de tu dinero disponible.</p><label>¿De cuánto fue el gasto?</label><input id="iv" type="number" inputmode="decimal"><button class="b" onclick="doImp()">Registrar imprevisto</button></div>'}
+function vImp(){const d0=S.fundBal>0.5?'fund':(S.funBal>0.5?'fun':'avail');
+const o=(v,t)=>'<option value="'+v+'"'+(d0==v?' selected':'')+'>'+t+(d0==v?' · sugerido':'')+'</option>';
+return '<h2>⚠️ Imprevisto</h2><div class="card"><p class="m">Cuéntame cuánto fue y de dónde quieres sacarlo. Te sugiero el fondo de emergencia, porque para esto existe. Si no alcanza, lo que falte sale de tu dinero disponible.</p><label>¿De cuánto fue el gasto?</label><input id="iv" type="number" inputmode="decimal"><label>¿Qué pasó? (opcional)</label><input id="iw" placeholder="Ej. reparación de la moto"><label>¿De dónde sale?</label><select id="isrc">'+o('fund','🛟 Fondo de emergencia ('+fm(S.fundBal)+')')+o('fun','🎈 Sobre de diversión ('+fm(S.funBal)+')')+o('avail','💵 Dinero disponible ('+fm(S.avail)+')')+'</select><button class="b" onclick="doImp()">Registrar imprevisto</button></div>'}
 
 function vAtraso(){const o=[];
 S.exp.filter(e=>!e.paused).forEach(e=>o.push('<option value="x:'+e.id+'">'+icon(e.n)+' '+esc(e.n)+'</option>'));
@@ -405,7 +424,7 @@ return '<h2>⏰ Pago atrasado</h2><div class="card"><p class="m">No pasa nada, a
 
 function vHist(){const L=[...S.log].reverse();
 if(!L.length)return '<h2>📜 Mi historial</h2><div class="card"><p class="m">Aún no hay movimientos. Cuando registres un cobro o un pago, aparecerá aquí.</p></div>';
-const IC={ingreso:'💰',extra:'🎁',imprevisto:'⚠️',atraso:'⏰',pago:'✅'},NM={ingreso:'Cobro',extra:'Dinero extra',imprevisto:'Imprevisto',atraso:'Pago atrasado',pago:'Pago realizado'};
+const IC={ingreso:'💰',extra:'🎁',imprevisto:'⚠️',atraso:'⏰',pago:'✅',retiro:'🛟'},NM={ingreso:'Cobro',extra:'Dinero extra',imprevisto:'Imprevisto',atraso:'Pago atrasado',pago:'Pago realizado',retiro:'Retiro del fondo'};
 let h='<h2>📜 Mi historial</h2>',cur='';
 L.forEach(e=>{const dt=new Date(e.t),mk2=dt.toLocaleDateString('es',{month:'long',year:'numeric'});
 if(mk2!==cur){cur=mk2;h+='<div class="hd">'+mk2+'</div>'}
@@ -416,16 +435,18 @@ return h}
 function vSheet(){if(!sheet)return '';
 const g=goal(),pc=g>0?Math.min(100,Math.round(S.fundBal/g*100)):0;
 const tot=S.debts.reduce((s,d)=>s+Math.max(0,d.bal),0),all=S.paidTot+tot,dp=all>0?Math.round(S.paidTot/all*100):0;
-let em='💡',ti='',tx='',mo='';
+let em='💡',ti='',tx='',mo='',ex='';
 if(sheet=='fondo'){ti='🛟 Fondo de emergencia';
-tx='El salvavidas es plata apartada solo para imprevistos: una reparación de la moto, una urgencia, un gasto que nadie esperaba. Cuando te sobra dinero, te sugiero apartar una parte aquí, hasta llegar a una meta equivalente a una semana de tus gastos esenciales. Así un susto no te devuelve al hoyo.';
+tx='El salvavidas es plata apartada solo para imprevistos: una reparación de la moto, una urgencia, un gasto que nadie esperaba. Cuando te sobra dinero, te sugiero apartar una parte aquí, hasta llegar a una meta equivalente a una semana de tus gastos esenciales. Si lo necesitas, puedes sacar dinero: para eso está.';
+if(S.fundBal>0.5)ex='<button class="b g" onclick="fundOut()">🛟 Sacar del fondo</button>';
 if(g<=0){em='🤔';mo='Agrega tus gastos fijos para que yo calcule tu meta.'}
 else if(pc==0){em='😢';mo='Todavía está vacío, pero cuando te sobre algo empieza a llenarse. Confío en que va a llegar.'}
 else if(pc<50){em='🙂';mo='Ya empezó a llenarse. Vas por buen camino, sigue así.'}
 else if(pc<100){em='😄';mo='Más de la mitad. ¡Ya casi tienes tu salvavidas completo!'}
 else{em='🥳';mo='¡Meta cumplida! Estás {c} ante una sorpresa.'}}
 else if(sheet=='diversion'){ti='🎈 Sobre de diversión';
-tx='Es tu sobre para disfrutar sin culpa: una salida, un antojo, un gusto. Se llena con lo que sobra después de cubrir lo importante. Si pasa un imprevisto, se usa primero.';
+tx='Es tu sobre para disfrutar sin culpa: una salida, un antojo, un gusto. Se llena con lo que sobra después de cubrir lo importante. Cuando lo gastes, anótalo aquí para llevar la cuenta.';
+if(S.funBal>0.5)ex='<button class="b g" onclick="funOut()">🎈 Gasté de mi diversión</button>';
 if(S.funBal<=0){em='😕';mo='Está vacío por ahora. Cuando cubras lo importante, aquí llega tu premio.'}
 else{em='😎';mo='Tienes para darte un gusto sin culpa. Te lo ganaste.'}}
 else if(sheet=='deuda'){ti='🎯 Tu camino a la libertad';
@@ -453,7 +474,7 @@ mo='Entre más completa esté tu lista y más días de pago tengas, más útil s
 else{em='⏸️';ti='⏸️ Gastos pausables';
 tx='Son suscripciones y gastos fijos que no son esenciales. Si el dinero no alcanza, se pausan uno o dos meses para cubrir lo importante, y la app te avisa cuándo retomarlos.';
 mo='Pausar no es perder: es cuidar lo importante primero.'}
-return '<div class="ov" onclick="closeSheet()"><div class="sh" onclick="event.stopPropagation()"><div class="mood">'+em+'</div><h2 style="margin:10px 0">'+ti+'</h2><p class="m" style="text-align:left">'+tx+'</p><div class="card hi" style="margin:12px 0;text-align:left">'+fmtMsg(mo)+'</div><button class="b" onclick="closeSheet()">Entendido</button></div></div>'}
+return '<div class="ov" onclick="closeSheet()"><div class="sh" onclick="event.stopPropagation()"><div class="mood">'+em+'</div><h2 style="margin:10px 0">'+ti+'</h2><p class="m" style="text-align:left">'+tx+'</p><div class="card hi" style="margin:12px 0;text-align:left">'+fmtMsg(mo)+'</div>'+ex+'<button class="b" onclick="closeSheet()">Entendido</button></div></div>'}
 
 function vForm(first){const o=(v,t,c)=>'<option value="'+v+'"'+(c==v?' selected':'')+'>'+t+'</option>';
 return (first?'<h2>👋 ¡Bienvenido!</h2><p class="m">Vamos a configurar tu app. Son solo unos datos. Todo se guarda únicamente en tu teléfono y nadie más lo ve. Después te pediré tus gastos fijos y tus deudas.</p>':'<h2>⚙️ Ajustes</h2>')+'<div class="card"><label>Tu nombre</label><input id="fn" value="'+esc(S.name)+'"><label>Eres</label><select id="fg">'+o('f','Mujer',S.g)+o('m','Hombre',S.g)+'</select><label>Símbolo de tu moneda (ej. $ o €)</label><input id="fc" value="'+esc(S.cur)+'"><label>¿A qué te dedicas?</label><select id="fj">'+o('delivery','Delivery / reparto',S.job)+o('empleado','Empleado',S.job)+o('independiente','Independiente',S.job)+o('otro','Otro',S.job)+'</select><label>Tu ingreso es</label><select id="fi">'+o('variable','Variable (cambia cada vez)',S.inc)+o('fijo','Fijo (sueldo)',S.inc)+'</select><label>¿Cuánto esperas recibir al mes? (opcional)</label><input id="fs" type="number" inputmode="decimal" value="'+(S.sal||'')+'"><label>¿Cada cuánto cobras?</label><select id="ff">'+o('semanal','Cada semana',S.freq)+o('quincenal','Cada quincena',S.freq)+o('mensual','Cada mes',S.freq)+'</select><label>Días del mes en que cobras (ej. 5, 19)</label><input id="fp" value="'+S.payDays.join(', ')+'">'+(first?'':'<label>Método para el dinero extra</label><select id="fm">'+o('bola','Bola de nieve (la deuda más pequeña primero)',S.method)+o('av','Avalancha (la de más interés primero)',S.method)+'</select><label>% del sobrante para diversión (máx. 30)</label><input id="fu" type="number" value="'+S.fun+'"><label>Modo avanzado (horas trabajadas y gasto de trabajo)</label><select id="fd">'+o('0','Apagado',S.adv?'1':'0')+o('1','Encendido',S.adv?'1':'0')+'</select>')+'</div><button class="b" onclick="saveForm('+first+')">'+(first?'Empezar':'Guardar')+'</button>'+(first?'':'<button class="b g" onclick="resetAll()">Borrar todos mis datos</button>')}
