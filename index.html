@@ -66,7 +66,7 @@ nav button.on .ic{transform:translateY(-3px) scale(1.2)}
 <div id="app"></div><nav id="nav"></nav>
 <script>
 const K='libreDeudas3';
-const def={setup:false,name:'',g:'f',cur:'$',job:'delivery',inc:'variable',sal:0,adv:false,freq:'mensual',method:'bola',fun:10,pct:5,fundBal:0,funBal:0,pend:0,gap:[],paidTot:0,rentDay:0,sav:{},late:[],log:[],exp:[],mig:0,fix:{trabajo:0,basicos:0,alquiler:0},debts:[],hist:[],used:{}};
+const def={setup:false,name:'',g:'f',cur:'$',job:'delivery',inc:'variable',sal:0,adv:false,freq:'mensual',method:'bola',fun:10,pct:5,fundBal:0,funBal:0,pend:0,gap:[],paidTot:0,rentDay:0,sav:{},late:[],log:[],exp:[],mig:0,payDays:[],paidM:{},todo:[],fix:{trabajo:0,basicos:0,alquiler:0},debts:[],hist:[],used:{}};
 let S;try{S=Object.assign(JSON.parse(JSON.stringify(def)),JSON.parse(localStorage.getItem(K)||'{}'))}catch(e){S=JSON.parse(JSON.stringify(def))}
 const save=()=>{try{localStorage.setItem(K,JSON.stringify(S))}catch(e){}};
 const FAC={semanal:.25,quincenal:.5,mensual:1};
@@ -85,6 +85,7 @@ if(S.fix.alquiler>0){rid=mk();S.exp.push({id:rid,n:'Alquiler',amt:S.fix.alquiler
 if(rid){if(S.sav.rent){S.sav[rid]=S.sav.rent;delete S.sav.rent}S.gap.forEach(g=>{if(g.key==='rent')g.key=rid})}
 S.mig=1;save()}
 migrate();
+S.late.forEach(l=>{if(!l.id)l.id=mk()});
 
 const F={
 abrir:[
@@ -192,6 +193,26 @@ function addLog(o){S.log.push(o);if(S.log.length>300)S.log.shift()}
 function applyDebt(d,amt){const a=Math.min(amt,d.bal);d.bal-=a;S.paidTot+=a;if(d.bal<=0.5){d.bal=0;return true}return false}
 function daysLeft(day){if(!day)return null;const t=new Date(),td=t.getDate(),dim=new Date(t.getFullYear(),t.getMonth()+1,0).getDate();return day>=td?day-td:dim-td+day}
 function netHour(){const a=S.hist.filter(x=>x.h>0).slice(-4);if(a.length<3)return null;const h=a.reduce((s,x)=>s+x.h,0),n=a.reduce((s,x)=>s+x.inc-(x.g||0),0);return n/h}
+const ymOf=d=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');
+const strip=n=>String(n).replace(/^\S+\s/,'');
+function occ(day,after){const t=new Date();t.setHours(0,0,0,0);if(after)t.setDate(t.getDate()+1);
+const m2=(y,m)=>new Date(y,m,Math.min(day,new Date(y,m+1,0).getDate()));
+let d=m2(t.getFullYear(),t.getMonth());if(d<t)d=m2(t.getFullYear(),t.getMonth()+1);return d}
+function daysTo(d){const t=new Date();t.setHours(0,0,0,0);return Math.round((d-t)/864e5)}
+function nextPayDate(){if(!S.payDays.length)return null;let b=null;S.payDays.forEach(p=>{const d=occ(p,true);if(!b||d<b)b=d});return b}
+function pendAmt(key){return S.todo.filter(t=>(t.kind=='bill'||t.kind=='save')&&String(t.key)==String(key)).reduce((s,t)=>s+t.amt,0)}
+function bills(){const np=nextPayDate(),L=np?daysTo(np):0,out=[];
+S.exp.filter(e=>!e.paused&&e.amt>0).forEach(e=>out.push({key:e.id,n:icon(e.n)+' '+e.n,amt:e.amt,day:e.day,apt:e.apt,pau:e.type=='pau',deb:null}));
+S.debts.filter(d=>d.bal>0&&d.min>0).forEach(d=>out.push({key:d.id,n:'💳 '+d.n+(d.es?' (esencial)':' (mínimo)'),amt:Math.min(d.min,d.bal),day:d.day,apt:true,pau:false,deb:d}));
+out.forEach(b=>{b.fixed=b.day>0;if(b.fixed){const d=occ(b.day);b.dl=daysTo(d);b.ym=ymOf(d);b.paid=!!(S.paidM[b.ym]&&S.paidM[b.ym][b.key]);b.inWin=b.dl<L}});
+return{L,np,out}}
+function autoLate(){let ch=false;const t0=new Date();t0.setHours(0,0,0,0);
+S.todo=S.todo.filter(t=>{if(t.kind!='bill'||!t.ym||!t.day)return true;
+const p=t.ym.split('-'),y=+p[0],m=+p[1]-1,due=new Date(y,m,Math.min(t.day,new Date(y,m+1,0).getDate()));
+if(due>=t0)return true;
+S.late.push({id:mk(),n:strip(t.n).replace(/ \((esencial|mínimo)\)$/,''),amt:t.amt+(S.sav[t.key]||0),debtId:t.debtId,key:t.key,ym:t.ym});
+S.sav[t.key]=0;addLog({t:Date.now(),type:'atraso',amt:t.amt,why:'Venció sin marcar: '+strip(t.n),lines:[]});ch=true;return false});
+if(ch)save()}
 
 function tips(hole){const nh=S.adv?netHour():null;let ganar;
 if(S.job=='delivery')ganar='Trabajar en horas pico (almuerzo y cena), fines de semana o con más de una plataforma. Ojo: más horas solo sirven si cada hora te deja ganancia después de la gasolina.';
@@ -202,31 +223,34 @@ const pa=pausAct();
 const pz=pa.length?'<p><b>⏸️ Pausar por ahora:</b> '+pa.map(p=>esc(p.n)+' ('+fm(p.amt)+')').join(', ')+'. Pausarlos liberaría '+fm(pausSum())+' al mes.</p><div class="ar">'+pa.map(p=>'<button class="mini p" onclick="pauseIt('+ka(p.id)+',1)">Pausar '+esc(p.n)+' 1 mes</button>').join('')+'</div><p class="m">Si prefieres 2 meses, cámbialo en Deudas, en Gastos fijos.</p>':'';
 return '<div class="card warm"><b>💡 Te faltan '+fm(hole)+'. Algunas ideas</b><br><br>'+pz+'<p><b>1. Recortar:</b> revisa salidas, comida fuera de casa y compras por impulso. Bajar lo no esencial es lo más rápido.</p><p><b>2. Renegociar:</b> pídele a quien más interés te cobra una pausa, un plazo más largo o una cuota menor.</p><p><b>3. Ganar más:</b> '+ganar+'</p><p class="m">No hace falta hacerlo todo. Elige una y empieza.</p></div>'}
 
-function plan(inc,ex0){const f=FAC[S.freq];let r=inc;const L=[],paid={};
+function plan(inc,ex0){const f=FAC[S.freq],A=S.payDays.length>0;let r=inc;const L=[],paid={},next=[];
 const add=(n,nd,o)=>{o=o||{};nd=Math.max(0,nd);const a=Math.min(nd,r);r-=a;L.push(Object.assign({n,need:nd,a},o));
 if(o.d)paid[o.d.id]=(paid[o.d.id]||0)+a;
-if(o.sv&&o.key!==undefined)paid[o.key]=(paid[o.key]||0)+a};
-if(ex0)S.gap.forEach((g,i)=>add('🧩 Completar: '+g.n,g.amt,{gk:i,key:g.key,sv:g.key!==undefined&&g.key!==null}));
-if(S.pend>0)add('⚠️ Imprevisto por compensar',S.pend,{pend:true});
-S.late.forEach((l,i)=>{const d=l.debtId?S.debts.find(q=>q.id==l.debtId&&q.bal>0):null;add('⏰ Atrasado: '+l.n,l.amt,{lk:i,d:d||undefined})});
+if(o.key!==undefined&&o.kind!='late')paid[o.key]=(paid[o.key]||0)+a};
+if(ex0)S.gap.forEach((g,i)=>add('🧩 Completar: '+g.n,g.amt,{gk:i,key:g.key,kind:(g.key!==undefined&&g.key!==null)?'save':'plain'}));
+if(S.pend>0)add('⚠️ Imprevisto por compensar',S.pend,{pend:true,kind:'pend'});
+S.late.forEach(l=>{const d=l.debtId?S.debts.find(q=>q.id==l.debtId&&q.bal>0):null;add('⏰ Atrasado: '+l.n,l.amt,{kind:'late',lateId:l.id,d:d||undefined})});
 const ds=S.debts.filter(d=>d.bal>0);
 if(!ex0){
-const act=S.exp.filter(e=>!e.paused&&e.amt>0);
-const ordE=[...act.filter(e=>e.type=='ess'&&!e.apt),...act.filter(e=>e.type=='ess'&&e.apt),...act.filter(e=>e.type=='pau')];
-ordE.forEach(e=>add(icon(e.n)+' '+e.n,e.amt*f,e.apt?{sv:true,key:e.id}:{}));
-ds.filter(d=>d.es).forEach(d=>add('💳 '+d.n+' (esencial)',Math.min(d.min*f,d.bal),{sv:true,key:d.id}));
-ds.filter(d=>!d.es).forEach(d=>add('💳 '+d.n+' (mínimo)',Math.min(d.min*f,d.bal),{sv:true,key:d.id}))}
+const B=bills(),Lw=B.L,lst=[];
+B.out.forEach(b=>{const pa=pendAmt(b.key);
+if(A&&b.fixed){if(b.paid)return;const nd=Math.max(0,b.amt-(S.sav[b.key]||0)-pa);
+if(!b.inWin){if(pa==0)next.push({n:b.n,amt:b.amt,day:b.day,dl:b.dl});return}
+if(nd>0.5)lst.push({b,nd,kind:'bill',g:b.pau?2:1,o:b.dl})}
+else{const nd=Math.max(0,b.amt*(A?Lw/30:f)-pa);if(nd>0.5)lst.push({b,nd,kind:b.apt?'save':'plain',g:b.pau?2:(b.apt?1:0),o:0})}});
+lst.sort((x,y)=>x.g-y.g||x.o-y.o);
+lst.forEach(x=>add(x.b.n,x.nd,{kind:x.kind,key:x.kind=='plain'?undefined:x.b.key,debtId:x.b.deb?x.b.deb.id:undefined,day:x.b.day,ym:x.b.ym}))}
 const short=L.reduce((s,x)=>s+x.need-x.a,0);
 const g=goal();let fund=Math.round(inc*S.pct/100);
 if(g>0)fund=Math.min(fund,Math.max(0,g-S.fundBal));
 fund=Math.max(0,Math.min(fund,r));r-=fund;
-if(fund>0)L.push({n:'🛟 Fondo de emergencia',need:fund,a:fund});
+if(fund>0)L.push({n:'🛟 Fondo de emergencia',need:fund,a:fund,kind:'fund'});
 let fun=0,ex=0;
 if(r>0){fun=Math.round(r*S.fun/100);ex=r-fun}
 const ord=[...ds].sort((a,b)=>S.method=='bola'?a.bal-b.bal:b.rate-a.rate);
 for(const d of ord){if(ex<=0)break;const p=Math.min(ex,d.bal-(paid[d.id]||0)-(S.sav[d.id]||0));
-if(p>0){L.push({n:'🎯 Extra para '+d.n,need:p,a:p,d});paid[d.id]=(paid[d.id]||0)+p;ex-=p}}
-fun+=ex;return{inc,L,fun,short:ex0?0:short,fund,extra:!!ex0}}
+if(p>0){L.push({n:'🎯 Extra para '+d.n,need:p,a:p,d,kind:'extra'});paid[d.id]=(paid[d.id]||0)+p;ex-=p}}
+fun+=ex;return{inc,L,fun,short:ex0?0:short,fund,extra:!!ex0,next}}
 
 function go(t){tab=t;imp=null;dm=null;res=null;openLog=null;sheet=null;if(t=='inicio')msg=null;render()}
 function setSub(x){sub=x;render(true)}
@@ -237,41 +261,55 @@ render()}
 function calcExtra(){const v=+gv('ev');if(!(v>0)){alert('Escribe cuánto dinero extra te llegó.');return}
 res=plan(v,true);res.hint=pick('extra');res.why=gv('em').trim();
 res.before=S.debts.reduce((s,d)=>s+d.bal,0);
-res.after=res.before-res.L.reduce((s,x)=>s+(x.d&&!x.sv?x.a:0),0);render()}
-function confirmPay(){let cleared=false,dp=0;const items=[];
-res.L.forEach(x=>{if(!(x.a>0))return;
-if(x.sv&&x.key!==undefined){S.sav[x.key]=(S.sav[x.key]||0)+x.a;if(S.debts.some(d=>d.id==x.key))dp+=x.a}
-else if(x.d){const d=S.debts.find(q=>q.id==x.d.id);if(d&&applyDebt(d,x.a))cleared=true;dp+=x.a}
-if(x.pend)S.pend=Math.max(0,S.pend-x.a);
-if(x.lk!==undefined)S.late[x.lk].amt-=x.a;
+res.after=res.before-res.L.reduce((s,x)=>s+(x.d?x.a:0),0);render()}
+function saveReparto(){const g=goal(),was=g>0&&S.fundBal>=g,A=S.payDays.length>0,f=FAC[S.freq];let items=[],debtAmt=0;
+res.L.forEach(x=>{if(!(x.a>0))return;items.push({n:x.n,a:x.a});
+if(x.kind=='fund')return;
 if(x.gk!==undefined)S.gap[x.gk].amt-=x.a;
-items.push({n:x.n,a:x.a})});
-S.late=S.late.filter(l=>l.amt>0.5);
-if(res.extra)S.gap=S.gap.filter(g=>g.amt>0.5);
-else S.gap=res.L.filter(x=>!x.pend&&x.lk===undefined&&x.gk===undefined&&x.need>x.a+0.5).map(x=>({n:x.n.replace(/^\S+\s/,''),amt:x.need-x.a,key:x.key}));
+let kind=x.kind||'plain';if(kind=='bill'&&x.a<x.need-0.5)kind='save';
+const did=x.debtId!==undefined?x.debtId:(x.d?x.d.id:undefined);
+if(did!==undefined&&kind!='pend')debtAmt+=x.a;
+S.todo.push({id:mk(),n:x.n,amt:x.a,kind,key:x.key,debtId:did,lateId:x.lateId,day:x.day||0,ym:x.ym||''})});
+if(res.extra)S.gap=S.gap.filter(q=>q.amt>0.5);
+else S.gap=res.L.filter(x=>(x.kind=='plain'||x.kind=='save'||x.kind=='bill')&&x.need>x.a+0.5).map(x=>({n:strip(x.n),amt:x.need-x.a,key:x.key}));
 if(res.fun>0)items.push({n:'🎈 Sobre de diversión',a:res.fun});
-const g=goal(),was=g>0&&S.fundBal>=g;
 S.fundBal+=res.fund;S.funBal+=res.fun;
 const hit=!was&&g>0&&S.fundBal>=g;
-S.hist.push({t:Date.now(),inc:res.inc,mp:res.extra?0:dp/FAC[S.freq],h:res.h||0,g:res.g||0,ex:!!res.extra});
+S.hist.push({t:Date.now(),inc:res.inc,mp:res.extra?0:debtAmt*(A?S.payDays.length:1/f),h:res.h||0,g:res.g||0,ex:!!res.extra});
 addLog({t:Date.now(),type:res.extra?'extra':'ingreso',amt:res.inc,why:res.why||'',lines:items});
-save();msg=pick(cleared?'hito':hit?'fondo':'pago');boom=true;res=null;tab='inicio';render()}
+save();msg=hit?pick('fondo'):pick(res.extra?'extra':'ingreso');boom=hit;res=null;tab='inicio';render()}
+function payTodo(id,quiet){const i=S.todo.findIndex(q=>q.id===id);if(i<0)return false;const t=S.todo[i];let cleared=false;
+const d=t.debtId!==undefined?S.debts.find(q=>q.id==t.debtId):null;
+if(t.kind=='bill'){const sv=S.sav[t.key]||0;if(d)cleared=applyDebt(d,t.amt+sv);S.sav[t.key]=0;if(t.ym){S.paidM[t.ym]=S.paidM[t.ym]||{};S.paidM[t.ym][t.key]=1}}
+else if(t.kind=='save'){S.sav[t.key]=(S.sav[t.key]||0)+t.amt}
+else if(t.kind=='extra'){if(d)cleared=applyDebt(d,t.amt)}
+else if(t.kind=='late'){const j=S.late.findIndex(l=>l.id===t.lateId);if(j>=0){const l=S.late[j],pay=Math.min(t.amt,l.amt);l.amt-=pay;
+const dd=l.debtId?S.debts.find(q=>q.id==l.debtId):null;if(dd)cleared=applyDebt(dd,pay);
+if(l.amt<=0.5){if(l.key!==undefined&&l.ym){S.paidM[l.ym]=S.paidM[l.ym]||{};S.paidM[l.ym][l.key]=1}S.late.splice(j,1)}}}
+else if(t.kind=='pend'){S.pend=Math.max(0,S.pend-t.amt)}
+S.todo.splice(i,1);
+addLog({t:Date.now(),type:'pago',amt:t.amt,why:'',lines:[{n:(t.kind=='save'?'🐷 Apartado: ':'✅ Pagado: ')+strip(t.n),a:t.amt}]});
+if(!quiet){save();msg=pick(cleared?'hito':'pago');boom=true;render(true)}
+return cleared}
+function payAll(){if(!S.todo.length)return;let c=false;[...S.todo].forEach(t=>{if(payTodo(t.id,true))c=true});save();msg=pick(c?'hito':'pago');boom=true;render(true)}
 function payApt(key){const amt=S.sav[key]||0;if(!(amt>0))return;let cleared=false,n='Gasto';
 const e=S.exp.find(q=>q.id===key);
 if(e)n=e.n;else{const d=S.debts.find(q=>q.id==key);if(d){n=d.n;cleared=applyDebt(d,amt)}}
+const tn=ymOf(new Date());S.paidM[tn]=S.paidM[tn]||{};S.paidM[tn][key]=1;
 S.sav[key]=0;addLog({t:Date.now(),type:'pago',amt,why:'',lines:[{n:'✅ Pagado: '+n,a:amt}]});
 save();msg=pick(cleared?'hito':'pago');boom=true;tab='inicio';render()}
 function payLate(i){const l=S.late[i];if(!l)return;let cleared=false;
 if(l.debtId){const d=S.debts.find(q=>q.id==l.debtId);if(d)cleared=applyDebt(d,l.amt)}
+if(l.key!==undefined&&l.ym){S.paidM[l.ym]=S.paidM[l.ym]||{};S.paidM[l.ym][l.key]=1}
 addLog({t:Date.now(),type:'pago',amt:l.amt,why:'',lines:[{n:'✅ Pagado: '+l.n,a:l.amt}]});
 S.late.splice(i,1);save();msg=pick(cleared?'hito':'pago');boom=true;render()}
 function addLate(){const v=gv('lp'),a=+gv('la');
 if(!(a>0)){alert('Escribe cuánto es.');return}
-let n,id=null;
-if(v.indexOf('x:')==0){const e=S.exp.find(q=>q.id===v.slice(2));n=e?e.n:'Gasto'}
+let n,id=null,key;
+if(v.indexOf('x:')==0){const e=S.exp.find(q=>q.id===v.slice(2));n=e?e.n:'Gasto';key=e?e.id:undefined}
 else if(v=='otro')n=gv('lo').trim()||'Otro pago';
-else{const d=S.debts.find(q=>q.id==v);n=d?d.n:'Pago';id=d?d.id:null}
-S.late.push({n,amt:a,debtId:id});addLog({t:Date.now(),type:'atraso',amt:a,why:n,lines:[]});
+else{const d=S.debts.find(q=>q.id==v);n=d?d.n:'Pago';id=d?d.id:null;key=d?d.id:undefined}
+S.late.push({id:mk(),n,amt:a,debtId:id,key,ym:ymOf(new Date())});addLog({t:Date.now(),type:'atraso',amt:a,why:n,lines:[]});
 save();msg=pick('atraso');tab='inicio';render()}
 function pauseIt(id,m){const p=S.exp.find(q=>q.id===id);if(!p)return;p.paused=true;p.until=Date.now()+m*30*864e5;save();msg=pick('pausa');res=null;tab='inicio';render()}
 function resumeIt(id){const p=S.exp.find(q=>q.id===id);if(!p)return;p.paused=false;p.until=null;save();render(true)}
@@ -294,6 +332,7 @@ function delDebt(id){if(confirm('¿Borrar esta deuda?')){S.debts=S.debts.filter(
 function saveForm(first){
 const n=gv('fn').trim();if(!n){alert('Escribe tu nombre.');return}
 S.name=n;S.g=gv('fg');S.cur=gv('fc').trim()||'$';S.job=gv('fj');S.freq=gv('ff');S.inc=gv('fi');S.sal=Math.max(0,+gv('fs')||0);
+S.payDays=[...new Set(gv('fp').split(/[^0-9]+/).map(Number).filter(q=>q>=1&&q<=31))].sort((a,b)=>a-b);
 if(!first){S.method=gv('fm');S.fun=Math.min(30,Math.max(0,+gv('fu')||0));S.adv=gv('fd')=='1'}
 S.setup=true;save();msg=null;if(first){tab='deudas';sub='gastos'}else tab='inicio';render()}
 function resetAll(){if(confirm('Se borrarán TODOS tus datos de este teléfono. ¿Seguro?')){try{localStorage.removeItem(K)}catch(e){}S=JSON.parse(JSON.stringify(def));S.mig=1;tab='inicio';msg=null;res=null;render()}}
@@ -301,13 +340,24 @@ function info(k){sheet=k;render(true)}
 function closeSheet(){sheet=null;render(true)}
 function toggleLog(t){openLog=openLog===t?null:t;render(true)}
 
-function dist(r,title){const rows=r.L.filter(x=>x.need>0).map(x=>({n:x.n,a:x.a,nd:x.need}));
+function dist(r,title){const rows=r.L.filter(x=>x.need>0).map(x=>({n:x.n+(x.day&&x.kind=='bill'?' · día '+x.day:''),a:x.a,nd:x.need}));
 if(r.fun>0)rows.push({n:'🎈 Sobre de diversión',a:r.fun,nd:r.fun});
 return '<div class="card"><b>'+title+'</b><div class="seg">'+rows.map((x,i)=>x.a>0?'<i style="flex:'+x.a+';background:'+COL[i%COL.length]+'"></i>':'').join('')+'</div>'+rows.map((x,i)=>'<div class="row"><span><i class="dot" style="background:'+COL[i%COL.length]+'"></i>'+esc(x.n)+'</span><span class="'+(x.a<x.nd?'w':'ok')+'">'+fm(x.a)+'</span></div>').join('')+'</div>'}
 
-function aptCard(){const it=[];
-S.exp.filter(e=>e.apt&&!e.paused&&e.amt>0).forEach(e=>it.push({key:e.id,n:icon(e.n)+' '+e.n,t:e.amt,day:e.day}));
-S.debts.filter(d=>d.bal>0&&d.min>0).forEach(d=>it.push({key:d.id,n:'💳 '+d.n,t:d.min,day:d.day}));
+function nextList(arr){if(!arr||!arr.length)return '';return '<div class="card"><b>📅 Se paga con el próximo ingreso</b><p class="m">Aún no vencen antes de tu siguiente cobro.</p>'+arr.sort((a,b)=>a.dl-b.dl).map(n=>'<div class="row"><span>'+esc(n.n)+'<div class="m">Vence día '+n.day+'</div></span><b>'+fm(n.amt)+'</b></div>').join('')+'</div>'}
+function nextCard(){if(!S.payDays.length)return '';const B=bills();
+return nextList(B.out.filter(b=>b.fixed&&!b.paid&&!b.inWin&&pendAmt(b.key)==0).map(b=>({n:b.n,amt:b.amt,day:b.day,dl:b.dl})))}
+function todoCard(){if(!S.todo.length)return '';
+const T=[...S.todo].sort((a,b)=>(a.day||99)-(b.day||99));
+return '<div class="card"><b>🧾 Por pagar</b><p class="m">Marca cada pago cuando lo hagas de verdad. Lo que no marques se queda aquí.</p>'+T.map(t=>{const lab=t.kind=='save'?'Ya lo aparté':(t.kind=='plain'?'Ya lo saqué':'Ya pagué');
+return '<div class="row"><span>'+esc(t.n)+'<div class="m">'+(t.day?'Vence día '+t.day:'')+'</div></span><span style="text-align:right"><b>'+fm(t.amt)+'</b><br><button class="mini p" onclick="payTodo('+ka(t.id)+')">'+lab+'</button></span></div>'}).join('')+'<button class="b g" onclick="payAll()">✅ Marcar todo como hecho</button></div>'}
+function monthCard(){const mm=ymOf(new Date());const rec=S.hist.filter(h=>!h.ex&&ymOf(new Date(h.t))==mm).reduce((s,h)=>s+h.inc,0);
+if(!(S.sal>0)&&rec==0)return '';const nxt=nextPayDate();
+return '<div class="card"><b>📊 Resumen del mes</b>'+(S.sal>0?'<div class="row"><span>Esperado</span><b>'+fm(S.sal)+'</b></div>':'')+'<div class="row"><span>Recibido</span><b class="ok">'+fm(rec)+'</b></div>'+(S.sal>0?'<div class="row"><span>Falta por llegar</span><b>'+fm(Math.max(0,S.sal-rec))+'</b></div>':'')+(nxt?'<div class="m" style="margin-top:6px">Próximo cobro: día '+nxt.getDate()+' (en '+daysTo(nxt)+' días)</div>':'')+'</div>'}
+
+function aptCard(){const it=[],A=S.payDays.length>0;
+S.exp.filter(e=>e.apt&&!e.paused&&e.amt>0&&(!A||(S.sav[e.id]||0)>0)).forEach(e=>it.push({key:e.id,n:icon(e.n)+' '+e.n,t:e.amt,day:e.day}));
+S.debts.filter(d=>d.bal>0&&d.min>0&&(!A||(S.sav[d.id]||0)>0)).forEach(d=>it.push({key:d.id,n:'💳 '+d.n,t:d.min,day:d.day}));
 if(!it.length)return '';
 return '<div class="card"><b>📌 Apartados del mes</b> <button class="x" style="color:var(--p)" onclick="info(\'apartados\')">ⓘ</button>'+it.map(a=>{const sv=S.sav[a.key]||0,pc=Math.min(100,Math.round(sv/a.t*100)),l=daysLeft(a.day);
 const du=l===null?'':(l==0?'Vence hoy':'Vence en '+l+(l==1?' día':' días')+' (día '+a.day+')');
@@ -325,10 +375,10 @@ else hero='<div class="card hero tap" onclick="info(\'deuda\')"><div class="m2">
 let im='';if(imp)im='<div class="card"><b>⚠️ Imprevisto de '+fm(imp.v)+'</b><div class="m">'+(imp.a>0?'Del sobre de diversión: '+fm(imp.a)+'. ':'')+(imp.b>0?'Del fondo de emergencia: '+fm(imp.b)+'. ':'')+(imp.r>0?'Faltaron '+fm(imp.r)+', que se compensan en tu próximo ingreso.':'Quedó todo cubierto.')+'</div></div>';
 const due=S.exp.filter(p=>p.paused&&p.until&&p.until<=Date.now());
 const dp2=due.length?'<div class="card warm"><b>⏯️ Ya pasó el tiempo de pausa</b><div class="m">¿Retomamos estos gastos?</div>'+due.map(p=>'<div class="row"><span>'+esc(p.n)+' · '+fm(p.amt)+'</span><button class="mini p" onclick="resumeIt('+ka(p.id)+')">Retomar</button></div>').join('')+'</div>':'';
-const lt=S.late.length?'<div class="card warm"><b>⏰ Pagos atrasados</b><div class="m">Los cubro primero con tu próximo ingreso o dinero extra.</div>'+S.late.map((l,i)=>'<div class="row"><span>'+esc(l.n)+' · <b>'+fm(l.amt)+'</b></span><button class="mini p" onclick="payLate('+i+')">Ya lo pagué</button></div>').join('')+'</div>':'';
+const lt=S.late.length?'<div class="card warm"><b>⏰ Pagos atrasados (pendientes)</b><div class="m">Los cubro primero con tu próximo ingreso o dinero extra.</div>'+S.late.map((l,i)=>'<div class="row"><span>'+esc(l.n)+' · <b>'+fm(l.amt)+'</b></span><button class="mini p" onclick="payLate('+i+')">Ya lo pagué</button></div>').join('')+'</div>':'';
 let dg='';if(S.inc=='fijo'&&S.sal>0&&need()>S.sal)dg=tips(need()-S.sal);
 const tiles='<div class="gr2"><div class="st tap" onclick="info(\'fondo\')"><div class="m">🛟 Fondo de emergencia</div><div class="mid">'+fm(S.fundBal)+'</div>'+(g>0?'<div class="bar"><div style="width:'+pc+'%"></div></div><div class="m">Meta: '+fm(g)+'</div>':'<div class="m">Agrega tus gastos fijos para calcular tu meta</div>')+'</div><div class="st tap" onclick="info(\'diversion\')"><div class="m">🎈 Sobre de diversión</div><div class="mid">'+fm(S.funBal)+'</div><div class="m">Toca para saber más</div></div></div>'+(S.pend>0?'<div class="card warm"><b>⚠️ Imprevisto por compensar: '+fm(S.pend)+'</b><div class="m">Se cubre en tu próximo ingreso o dinero extra.</div></div>':'');
-return '<div class="card hi">'+msg+'</div>'+hero+im+dp2+lt+dg+tiles+aptCard()+'<button class="b" onclick="go(\'ingreso\')">💰 Registrar ingreso</button><div class="gr2" style="margin-top:12px"><button class="b g" onclick="go(\'extra\')">🎁 Dinero extra</button><button class="b g" onclick="go(\'imp\')">⚠️ Imprevisto</button></div><div class="gr2"><button class="b g" onclick="go(\'atraso\')">⏰ Pago atrasado</button><button class="b g" onclick="go(\'hist\')">📜 Mi historial</button></div>'}
+return '<div class="card hi">'+msg+'</div>'+hero+im+dp2+lt+todoCard()+nextCard()+dg+monthCard()+tiles+aptCard()+'<button class="b" onclick="go(\'ingreso\')">💰 Registrar ingreso</button><div class="gr2" style="margin-top:12px"><button class="b g" onclick="go(\'extra\')">🎁 Dinero extra</button><button class="b g" onclick="go(\'imp\')">⚠️ Imprevisto</button></div><div class="gr2"><button class="b g" onclick="go(\'atraso\')">⏰ Pago atrasado</button><button class="b g" onclick="go(\'hist\')">📜 Mi historial</button></div>'}
 
 function vDebtsPart(){let l=S.debts.map(d=>{const ini=d.ini||d.bal,pc=ini>0?Math.round((1-d.bal/ini)*100):0;
 return '<div class="row" style="align-items:flex-start"><div style="flex:1"><b>'+esc(d.n)+'</b>'+(d.es?' ⭐':'')+(d.bal==0?' ✅ Saldada':'')+'<div class="m">Debe '+fm(d.bal)+' · cuota '+fm(d.min)+' · interés '+d.rate+'%'+(d.day?' · día '+d.day:'')+'</div><div class="bar"><div style="width:'+Math.max(0,pc)+'%"></div></div></div><button class="x" onclick="delDebt('+d.id+')">Borrar</button></div>'}).join('');
@@ -337,23 +387,23 @@ return (dm?'<div class="card hi">'+dm+'</div>':'')+'<div class="card">'+(l||'<p 
 function vGastos(){const te=S.exp.filter(e=>e.type=='ess').reduce((s,e)=>s+e.amt,0),tp=pausSum();
 const row=e=>'<div class="row" style="align-items:flex-start"><div style="flex:1"><b>'+icon(e.n)+' '+esc(e.n)+'</b> · '+fm(e.amt)+'/mes<div class="m">'+(e.type=='pau'?(e.paused?'⏸️ Pausado'+(e.until?' hasta el '+new Date(e.until).toLocaleDateString('es',{day:'numeric',month:'short'}):''):'▶️ Se puede pausar'):'Esencial')+(e.apt?' · se aparta'+(e.day?' · día '+e.day:''):'')+'</div><div class="ar"><button class="mini" onclick="editExp('+ka(e.id)+')">Editar monto</button>'+(e.type=='pau'?(e.paused?'<button class="mini p" onclick="resumeIt('+ka(e.id)+')">Retomar</button>':'<button class="mini" onclick="pauseIt('+ka(e.id)+',1)">Pausar 1 mes</button><button class="mini" onclick="pauseIt('+ka(e.id)+',2)">Pausar 2 meses</button>'):'')+'</div></div><button class="x" onclick="delExp('+ka(e.id)+')">Borrar</button></div>';
 const sg=SUG.filter(s=>!S.exp.some(e=>e.n.toLowerCase()==s[0].toLowerCase()));
-return '<div class="card"><b>🧾 Mis gastos fijos</b> <button class="x" style="color:var(--p)" onclick="info(\'gastos\')">ⓘ</button><p class="m">Esenciales: '+fm(te)+' al mes'+(tp>0?' · Pausables activos: '+fm(tp):'')+'</p>'+(S.exp.length?S.exp.map(row).join(''):'<p class="m">Aún no has agregado gastos. Agrega todos los que tengas, aunque sean pequeños.</p>')+'</div><div class="card"><b>➕ Agregar gasto fijo</b>'+(sg.length?'<p class="m">Toca uno para empezar más rápido:</p><div class="ar" style="margin-bottom:12px">'+sg.map(s=>'<button class="mini" onclick="sugg(\''+s[0]+'\',\''+s[1]+'\','+s[2]+')">+ '+s[0]+'</button>').join('')+'</div>':'')+'<label>Nombre</label><input id="xn"><label>Cuánto cuesta al mes</label><input id="xm" type="number" inputmode="decimal"><label>Tipo</label><select id="xt"><option value="ess">Esencial (no se toca)</option><option value="pau">Se puede pausar si falta plata</option></select><label><input id="xa" type="checkbox" style="width:auto;margin-right:8px">Lo pago de una vez en una fecha (ir apartándolo)</label><label>Día del mes en que se paga (opcional)</label><input id="xd" type="number" inputmode="numeric"><button class="b" onclick="addExp()">Agregar</button></div>'}
+return '<div class="card"><b>🧾 Mis gastos fijos</b> <button class="x" style="color:var(--p)" onclick="info(\'gastos\')">ⓘ</button><p class="m">Esenciales: '+fm(te)+' al mes'+(tp>0?' · Pausables activos: '+fm(tp):'')+'</p>'+(S.exp.length?S.exp.map(row).join(''):'<p class="m">Aún no has agregado gastos. Agrega todos los que tengas, aunque sean pequeños.</p>')+'</div><div class="card"><b>➕ Agregar gasto fijo</b>'+(sg.length?'<p class="m">Toca uno para empezar más rápido:</p><div class="ar" style="margin-bottom:12px">'+sg.map(s=>'<button class="mini" onclick="sugg(\''+s[0]+'\',\''+s[1]+'\','+s[2]+')">+ '+s[0]+'</button>').join('')+'</div>':'')+'<label>Nombre</label><input id="xn"><label>Cuánto cuesta al mes</label><input id="xm" type="number" inputmode="decimal"><label>Tipo</label><select id="xt"><option value="ess">Esencial (no se toca)</option><option value="pau">Se puede pausar si falta plata</option></select><label><input id="xa" type="checkbox" style="width:auto;margin-right:8px">Lo pago de una vez en una fecha (ir apartándolo)</label><label>Día del mes en que se paga (opcional, ayuda a ordenar por fechas)</label><input id="xd" type="number" inputmode="numeric"><button class="b" onclick="addExp()">Agregar</button></div>'}
 
 function vDeudas(){const sw='<div class="gr2"><button class="b'+(sub=='deudas'?'':' g')+'" onclick="setSub(\'deudas\')">💳 Deudas</button><button class="b'+(sub=='gastos'?'':' g')+'" onclick="setSub(\'gastos\')">🧾 Gastos fijos</button></div>';
 return '<h2>📋 Deudas y gastos</h2>'+sw+(sub=='gastos'?vGastos():vDebtsPart())}
 
 function vIngreso(){const T={semanal:'esta semana',quincenal:'esta quincena',mensual:'este mes'}[S.freq];
-const pre=S.inc=='fijo'&&S.sal>0?Math.round(S.sal*FAC[S.freq]):'';
-let h='<h2>💰 Registrar ingreso</h2><div class="card"><label>¿Cuánto ingresó '+T+'?</label><input id="inc" type="number" inputmode="decimal" value="'+pre+'">'+(S.adv?'<label>Horas trabajadas (opcional)</label><input id="ih" type="number" inputmode="decimal"><label>Gasto de trabajo, ej. gasolina (opcional)</label><input id="ig" type="number" inputmode="decimal">':'')+'<button class="b" onclick="calc()">Repartir</button></div>';
-if(res&&!res.extra){h+='<div class="card hi">'+res.hint+'</div>'+dist(res,'Así se reparte '+fm(res.inc));
+const pre=S.inc=='fijo'&&S.sal>0&&!S.payDays.length?Math.round(S.sal*FAC[S.freq]):'';
+let h='<h2>💰 Registrar ingreso</h2><div class="card"><label>¿Cuánto ingresó '+(S.payDays.length?'en este cobro':T)+'?</label><input id="inc" type="number" inputmode="decimal" value="'+pre+'">'+(S.adv?'<label>Horas trabajadas (opcional)</label><input id="ih" type="number" inputmode="decimal"><label>Gasto de trabajo, ej. gasolina (opcional)</label><input id="ig" type="number" inputmode="decimal">':'')+'<button class="b" onclick="calc()">Repartir</button></div>';
+if(res&&!res.extra){h+='<div class="card hi">'+res.hint+'</div>'+dist(res,'Así se reparte '+fm(res.inc))+nextList(res.next);
 if(res.short>0)h+='<div class="card warm"><b>Este ingreso no alcanzó para cubrir todo.</b><div class="m">No te castigues: si te llega dinero extra, lo usamos primero para completar lo que faltó.</div></div>'+tips(res.short);
-h+='<button class="b" onclick="confirmPay()">✅ Ya repartí este dinero</button>'}
+h+='<button class="b" onclick="saveReparto()">✅ Guardar reparto</button><p class="m" style="text-align:center">Después marca cada pago en Inicio cuando lo hagas de verdad.</p>'}
 return h}
 
 function vExtra(){let h='<h2>🎁 Dinero extra</h2><div class="card"><p class="m">¿Te cayó plata adicional? Un trabajo extra, un pago atrasado que te debían, un regalo. Escríbela y la sumamos a tu plan: primero completa lo que haya faltado, y el resto avanza hacia tu libertad.</p><label>¿Cuánto dinero extra te llegó?</label><input id="ev" type="number" inputmode="decimal"><label>Motivo (opcional)</label><input id="em" placeholder="Ej. trabajo extra del sábado"><button class="b" onclick="calcExtra()">Repartir el extra</button></div>';
 if(res&&res.extra){h+='<div class="card hi">'+res.hint+'</div>'+dist(res,'Así se reparte tu extra de '+fm(res.inc)+(res.why?' · '+esc(res.why):''));
-if(res.before>0)h+='<div class="card"><div class="row"><span>Deuda antes</span><b>'+fm(res.before)+'</b></div><div class="row"><span>Deuda después</span><b class="ok">'+fm(res.after)+'</b></div></div>';
-h+='<button class="b" onclick="confirmPay()">✅ Ya repartí este dinero</button>'}
+if(res.before>0)h+='<div class="card"><div class="row"><span>Deuda hoy</span><b>'+fm(res.before)+'</b></div><div class="row"><span>Deuda si pagas esto</span><b class="ok">'+fm(res.after)+'</b></div></div>';
+h+='<button class="b" onclick="saveReparto()">✅ Guardar reparto</button><p class="m" style="text-align:center">Después marca cada pago en Inicio cuando lo hagas de verdad.</p>'}
 return h}
 
 function vImp(){return '<h2>⚠️ Imprevisto</h2><div class="card"><p class="m">Cuéntame cuánto fue. Lo cubro primero con tu sobre de diversión, luego con el fondo de emergencia, y si falta algo lo compensamos en tu próximo ingreso.</p><label>¿De cuánto fue el gasto?</label><input id="iv" type="number" inputmode="decimal"><button class="b" onclick="doImp()">Registrar imprevisto</button></div>'}
@@ -390,17 +440,17 @@ tx='Es tu sobre para disfrutar sin culpa: una salida, un antojo, un gusto. Se ll
 if(S.funBal<=0){em='😕';mo='Está vacío por ahora. Cuando cubras lo importante, aquí llega tu premio.'}
 else{em='😎';mo='Tienes para darte un gusto sin culpa. Te lo ganaste.'}}
 else if(sheet=='deuda'){ti='🎯 Tu camino a la libertad';
-tx='Este círculo muestra cuánto de tus deudas ya pagaste. Cada pago que se aplica lo llena un poco más, hasta llegar al 100%.';
+tx='Este círculo muestra cuánto de tus deudas ya pagaste. Cada pago que marcas lo llena un poco más, hasta llegar al 100%.';
 if(!S.debts.length){em='🌱';mo='Agrega tus deudas para empezar a ver tu avance.'}
 else if(tot==0){em='🥳';mo='¡Libre de deudas! Lo lograste.'}
 else if(dp==0){em='😟';mo='Aún no empieza a llenarse, pero ya diste el primer paso: mirar tus deudas de frente.'}
 else if(dp<50){em='🙂';mo='Ya empezó a avanzar. Cada pago cuenta.'}
 else{em='😄';mo='Más de la mitad. ¡Ya casi!'}}
 else if(sheet=='apartados'){em='🐷';ti='📌 Apartados del mes';
-tx='Cada vez que repartes un ingreso, una parte de tus gastos con fecha de pago y de tus cuotas se aparta para juntarlas y pagar completo a tiempo. La app solo lleva la cuenta: aparta ese dinero de verdad, en un sobre o en otra cuenta, para no gastarlo por error.';
+tx='Cuando marcas "Ya lo aparté", esa plata suma a la barra de ese gasto, para juntar el total y pagarlo completo a tiempo. La app solo lleva la cuenta: aparta ese dinero de verdad, en un sobre o en otra cuenta, para no gastarlo por error.';
 mo='Cuando lo pagues de verdad, toca "Ya lo pagué" y la barra vuelve a empezar.'}
 else if(sheet=='gastos'){em='🧾';ti='🧾 Gastos fijos';
-tx='Aquí van todos los gastos que se repiten cada mes. Los esenciales (alquiler, luz, comida) no se tocan. Los que se pueden pausar (suscripciones, gimnasio) los puedes frenar uno o dos meses si falta dinero. Si un gasto se paga de una vez en una fecha, se va apartando poco a poco.';
+tx='Aquí van todos los gastos que se repiten cada mes. Los esenciales (alquiler, luz, comida) no se tocan. Los que se pueden pausar (suscripciones, gimnasio) los puedes frenar uno o dos meses si falta dinero. Si le pones día de pago, la app reparte tus ingresos según lo que vence primero.';
 mo='Entre más completa esté tu lista, más exacto será tu plan.'}
 else{em='⏸️';ti='⏸️ Gastos pausables';
 tx='Son suscripciones y gastos fijos que no son esenciales. Si el dinero no alcanza, se pausan uno o dos meses para cubrir lo importante, y la app te avisa cuándo retomarlos.';
@@ -408,7 +458,7 @@ mo='Pausar no es perder: es cuidar lo importante primero.'}
 return '<div class="ov" onclick="closeSheet()"><div class="sh" onclick="event.stopPropagation()"><div class="mood">'+em+'</div><h2 style="margin:10px 0">'+ti+'</h2><p class="m" style="text-align:left">'+tx+'</p><div class="card hi" style="margin:12px 0;text-align:left">'+fmtMsg(mo)+'</div><button class="b" onclick="closeSheet()">Entendido</button></div></div>'}
 
 function vForm(first){const o=(v,t,c)=>'<option value="'+v+'"'+(c==v?' selected':'')+'>'+t+'</option>';
-return (first?'<h2>👋 ¡Bienvenido!</h2><p class="m">Vamos a configurar tu app. Son solo unos datos. Todo se guarda únicamente en tu teléfono y nadie más lo ve. Después te pediré tus gastos fijos y tus deudas.</p>':'<h2>⚙️ Ajustes</h2>')+'<div class="card"><label>Tu nombre</label><input id="fn" value="'+esc(S.name)+'"><label>Eres</label><select id="fg">'+o('f','Mujer',S.g)+o('m','Hombre',S.g)+'</select><label>Símbolo de tu moneda (ej. $ o US$)</label><input id="fc" value="'+esc(S.cur)+'"><label>¿A qué te dedicas?</label><select id="fj">'+o('delivery','Delivery / reparto',S.job)+o('empleado','Empleado',S.job)+o('independiente','Independiente',S.job)+o('otro','Otro',S.job)+'</select><label>Tu ingreso es</label><select id="fi">'+o('variable','Variable (cambia cada vez)',S.inc)+o('fijo','Fijo (sueldo)',S.inc)+'</select><label>Si es fijo: ¿cuánto recibes al mes?</label><input id="fs" type="number" inputmode="decimal" value="'+(S.sal||'')+'"><label>¿Cada cuánto registras tus ingresos?</label><select id="ff">'+o('semanal','Cada semana',S.freq)+o('quincenal','Cada quincena',S.freq)+o('mensual','Cada mes',S.freq)+'</select>'+(first?'':'<label>Método para el dinero extra</label><select id="fm">'+o('bola','Bola de nieve (la deuda más pequeña primero)',S.method)+o('av','Avalancha (la de más interés primero)',S.method)+'</select><label>% del sobrante para diversión (máx. 30)</label><input id="fu" type="number" value="'+S.fun+'"><label>Modo avanzado (horas trabajadas y gasto de trabajo)</label><select id="fd">'+o('0','Apagado',S.adv?'1':'0')+o('1','Encendido',S.adv?'1':'0')+'</select>')+'</div><button class="b" onclick="saveForm('+first+')">'+(first?'Empezar':'Guardar')+'</button>'+(first?'':'<button class="b g" onclick="resetAll()">Borrar todos mis datos</button>')}
+return (first?'<h2>👋 ¡Bienvenido!</h2><p class="m">Vamos a configurar tu app. Son solo unos datos. Todo se guarda únicamente en tu teléfono y nadie más lo ve. Después te pediré tus gastos fijos y tus deudas.</p>':'<h2>⚙️ Ajustes</h2>')+'<div class="card"><label>Tu nombre</label><input id="fn" value="'+esc(S.name)+'"><label>Eres</label><select id="fg">'+o('f','Mujer',S.g)+o('m','Hombre',S.g)+'</select><label>Símbolo de tu moneda (ej. $ o US$)</label><input id="fc" value="'+esc(S.cur)+'"><label>¿A qué te dedicas?</label><select id="fj">'+o('delivery','Delivery / reparto',S.job)+o('empleado','Empleado',S.job)+o('independiente','Independiente',S.job)+o('otro','Otro',S.job)+'</select><label>Tu ingreso es</label><select id="fi">'+o('variable','Variable (cambia cada vez)',S.inc)+o('fijo','Fijo (sueldo)',S.inc)+'</select><label>¿Cuánto esperas recibir al mes? (opcional)</label><input id="fs" type="number" inputmode="decimal" value="'+(S.sal||'')+'"><label>¿Cada cuánto registras tus ingresos?</label><select id="ff">'+o('semanal','Cada semana',S.freq)+o('quincenal','Cada quincena',S.freq)+o('mensual','Cada mes',S.freq)+'</select><label>Días del mes en que cobras (opcional, ej. 5, 19)</label><input id="fp" value="'+S.payDays.join(', ')+'">'+(first?'':'<label>Método para el dinero extra</label><select id="fm">'+o('bola','Bola de nieve (la deuda más pequeña primero)',S.method)+o('av','Avalancha (la de más interés primero)',S.method)+'</select><label>% del sobrante para diversión (máx. 30)</label><input id="fu" type="number" value="'+S.fun+'"><label>Modo avanzado (horas trabajadas y gasto de trabajo)</label><select id="fd">'+o('0','Apagado',S.adv?'1':'0')+o('1','Encendido',S.adv?'1':'0')+'</select>')+'</div><button class="b" onclick="saveForm('+first+')">'+(first?'Empezar':'Guardar')+'</button>'+(first?'':'<button class="b g" onclick="resetAll()">Borrar todos mis datos</button>')}
 
 function confetti(){const c=['#6c4cf1','#4c8df6','#17a673','#f5a524','#e0559e'];
 for(let i=0;i<46;i++){const e=document.createElement('span');e.className='cf';e.style.left=Math.random()*100+'vw';e.style.background=c[i%5];e.style.animationDuration=(1.8+Math.random()*1.6)+'s';e.style.animationDelay=(Math.random()*.4)+'s';document.body.appendChild(e);setTimeout(()=>e.remove(),4300)}}
@@ -417,6 +467,7 @@ const st=ts=>{if(!s)s=ts;const p=Math.min(1,(ts-s)/800);el.textContent=fr(v*(1-M
 
 function render(keep){const nav=document.getElementById('nav');
 if(!S.setup){document.getElementById('app').innerHTML=vForm(true);nav.innerHTML='';return}
+autoLate();
 document.getElementById('app').innerHTML={inicio:vInicio,deudas:vDeudas,ingreso:vIngreso,extra:vExtra,imp:vImp,atraso:vAtraso,hist:vHist,ajustes:()=>vForm(false)}[tab]()+vSheet();
 nav.innerHTML=[['inicio','🏠','Inicio'],['deudas','📋','Deudas'],['ingreso','💰','Ingreso'],['extra','🎁','Extra'],['ajustes','⚙️','Ajustes']].map(t=>'<button class="'+(tab==t[0]?'on':'')+'" onclick="go(\''+t[0]+'\')"><span class="ic">'+t[1]+'</span><span>'+t[2]+'</span></button>').join('');
 if(!keep)window.scrollTo(0,0);
